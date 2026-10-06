@@ -1,33 +1,37 @@
 FROM php:8.3-cli
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
     unzip \
     libpq-dev \
     libzip-dev \
+    libicu-dev \
+    libonig-dev \
+    libxml2-dev \
     && docker-php-ext-install \
-        pdo \
         pdo_pgsql \
+        mbstring \
+        intl \
+        bcmath \
+        xml \
         zip \
+        opcache \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www
 
-# Copy Laravel project
 COPY . .
 
-# Install PHP dependencies
 RUN composer install \
     --no-dev \
     --optimize-autoloader \
-    --no-interaction
+    --no-interaction \
+    --prefer-dist
 
-# Laravel storage permissions
-RUN mkdir -p storage/framework/cache \
+RUN mkdir -p \
+    storage/framework/cache \
     storage/framework/sessions \
     storage/framework/views \
     storage/logs \
