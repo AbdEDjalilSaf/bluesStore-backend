@@ -109,26 +109,6 @@ class ProductApiTest extends TestCase
             ->assertJsonPath('data.0.slug', $newest->slug);
     }
 
-    public function test_index_filters_by_eighties_era_and_sorts_by_price_asc(): void
-    {
-        Product::factory()->create(['name' => 'Eighties Pricey', 'slug' => 'eighties-pricey', 'year' => 1986, 'price' => 12000]);
-        Product::factory()->create(['name' => 'Eighties Bargain', 'slug' => 'eighties-bargain', 'year' => 1983, 'price' => 4000]);
-        Product::factory()->create(['name' => 'Seventies', 'slug' => 'seventies', 'year' => 1975, 'price' => 1000]);
-        Product::factory()->create(['name' => 'Nineties', 'slug' => 'nineties', 'year' => 1995, 'price' => 2000]);
-
-        $response = $this->getJson('/api/products?year=eighties&sort=price_asc');
-
-        $response->assertOk()
-            ->assertJsonCount(2, 'data')
-            ->assertJsonPath('data.0.slug', 'eighties-bargain')
-            ->assertJsonPath('data.1.slug', 'eighties-pricey');
-
-        foreach ($response->json('data') as $product) {
-            $this->assertGreaterThanOrEqual(1980, $product['year']);
-            $this->assertLessThanOrEqual(1989, $product['year']);
-        }
-    }
-
     public function test_index_returns_computed_discount_and_stock_fields(): void
     {
         Product::factory()->create([
@@ -150,7 +130,6 @@ class ProductApiTest extends TestCase
     {
         $this->getJson('/api/products?rarity=legendary')->assertStatus(422);
         $this->getJson('/api/products?condition=worn_out')->assertStatus(422);
-        $this->getJson('/api/products?year=twenties')->assertStatus(422);
         $this->getJson('/api/products?sort=random')->assertStatus(422);
     }
 
@@ -191,22 +170,5 @@ class ProductApiTest extends TestCase
         Product::factory()->create(['name' => 'Hidden', 'slug' => 'hidden-product', 'is_active' => false]);
 
         $this->getJson('/api/products/hidden-product')->assertNotFound();
-    }
-
-    public function test_year_endpoint_returns_era_options_with_counts(): void
-    {
-        Product::factory()->create(['name' => 'Eighties A', 'slug' => 'eighties-a', 'year' => 1984]);
-        Product::factory()->create(['name' => 'Eighties B', 'slug' => 'eighties-b', 'year' => 1987]);
-        Product::factory()->create(['name' => 'Nineties', 'slug' => 'nineties-shirt', 'year' => 1995]);
-        Product::factory()->create(['name' => 'Hidden Eighties', 'slug' => 'hidden-eighties', 'year' => 1982, 'is_active' => false]);
-
-        $data = collect($this->getJson('/api/year')->assertOk()->json('data'));
-
-        $this->assertCount(8, $data);
-        $this->assertSame(2, $data->firstWhere('value', 'eighties')['count']);
-        $this->assertSame(1, $data->firstWhere('value', 'nineties')['count']);
-        $this->assertSame(0, $data->firstWhere('value', 'fifties')['count']);
-        $this->assertSame('1980s', $data->firstWhere('value', 'eighties')['label']);
-        $this->assertSame(['value', 'label', 'count'], array_keys($data->first()));
     }
 }

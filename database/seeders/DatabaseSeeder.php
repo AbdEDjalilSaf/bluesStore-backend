@@ -11,6 +11,8 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        $this->call(WilayaSeeder::class);
+
         if (app()->isLocal()) {
             $this->call(DemoProductSeeder::class);
         }

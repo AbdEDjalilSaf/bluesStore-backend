@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Enums\Condition;
-use App\Enums\Era;
 use App\Enums\Rarity;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
@@ -21,7 +20,6 @@ class ProductController extends Controller
             'team' => ['sometimes', 'string', 'max:255'],
             'rarity' => ['sometimes', Rule::enum(Rarity::class)],
             'condition' => ['sometimes', Rule::enum(Condition::class)],
-            'year' => ['sometimes', Rule::enum(Era::class)],
             'search' => ['sometimes', 'string', 'max:255'],
             'sort' => ['sometimes', Rule::in(['newest', 'price_asc', 'price_desc', 'year'])],
             'page' => ['sometimes', 'integer', 'min:1'],
@@ -42,10 +40,6 @@ class ProductController extends Controller
 
         if (isset($filters['condition'])) {
             $query->where('condition', $filters['condition']);
-        }
-
-        if (isset($filters['year'])) {
-            $query->whereBetween('year', Era::from($filters['year'])->range());
         }
 
         if (isset($filters['search'])) {
@@ -81,27 +75,5 @@ class ProductController extends Controller
             ->firstOrFail();
 
         return new ProductResource($product);
-    }
-
-    /**
-     * List every era option with the number of products it holds.
-     */
-    public function years()
-    {
-        $counts = Product::query()
-            ->where('is_active', true)
-            ->selectRaw('year, COUNT(*) as products_count')
-            ->groupBy('year')
-            ->pluck('products_count', 'year');
-
-        $eras = collect(Era::cases())->map(fn (Era $era) => [
-            'value' => $era->value,
-            'label' => $era->label(),
-            'count' => (int) $counts
-                ->filter(fn ($count, $year) => $era->contains((int) $year))
-                ->sum(),
-        ]);
-
-        return response()->json(['data' => $eras]);
     }
 }
