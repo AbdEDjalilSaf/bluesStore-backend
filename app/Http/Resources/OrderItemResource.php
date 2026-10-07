@@ -7,16 +7,16 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(
-    schema: 'ProductImage',
+    schema: 'OrderItem',
     type: 'object',
     properties: [
         new OA\Property(property: 'id', type: 'integer'),
-        new OA\Property(property: 'path', type: 'string'),
-        new OA\Property(property: 'sort_order', type: 'integer'),
-        new OA\Property(property: 'is_primary', type: 'boolean'),
+        new OA\Property(property: 'product_id', type: 'integer'),
+        new OA\Property(property: 'product_name', type: 'string'),
+        new OA\Property(property: 'unit_price', type: 'integer'),
     ]
 )]
-class ProductImageResource extends JsonResource
+class OrderItemResource extends JsonResource
 {
     /**
      * @return array<string, mixed>
@@ -25,9 +25,9 @@ class ProductImageResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'path' => $this->path,
-            'sort_order' => $this->sort_order,
-            'is_primary' => $this->is_primary,
+            'product_id' => $this->product_id,
+            'product_name' => $this->product_name,
+            'unit_price' => $this->unit_price,
         ];
     }
 }

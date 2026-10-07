@@ -1,8 +1,8 @@
 {
     "openapi": "3.0.0",
     "info": {
-        "title": "My API",
-        "description": "OpenAPI documentation for the storefront API.",
+        "title": "Shirt Store API",
+        "description": "No-login storefront API for a retro football shirt shop. Browse the catalog and shipping wilayas, then place an order without an account. All amounts are in DZD.",
         "contact": {
             "email": "hello@example.com"
         },
@@ -14,48 +14,451 @@
         }
     ],
     "paths": {
-        "/user": {
-            "get": {
+        "/orders": {
+            "post": {
                 "tags": [
-                    "Auth"
+                    "orders"
                 ],
-                "summary": "Show the authenticated user.",
-                "operationId": "fb0075b9b945798069bb08744ea6e3fd",
-                "responses": {
-                    "200": {
-                        "description": "Authenticated user information"
-                    },
-                    "401": {
-                        "description": "Not authenticated"
+                "summary": "Place an order",
+                "description": "Guest checkout. Prices are computed on the server and stock is decremented inside a transaction. Throttled to 5 requests per minute.",
+                "operationId": "445bab4f7dc9ea6fcd54f286c0209478",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/OrderRequest"
+                            }
+                        }
                     }
                 },
-                "security": [
+                "responses": {
+                    "201": {
+                        "description": "Order placed.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Order"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed, an item is unavailable, or there is not enough stock."
+                    },
+                    "429": {
+                        "description": "Too many requests."
+                    }
+                }
+            }
+        },
+        "/products": {
+            "get": {
+                "tags": [
+                    "products"
+                ],
+                "summary": "List active products",
+                "description": "Paginated product list with filters, searching, sorting and computed fields (discount_percent, in_stock).",
+                "operationId": "c1ff6f862214e1896c59cfe0491ce0e8",
+                "parameters": [
                     {
-                        "bearer": []
+                        "name": "team",
+                        "in": "query",
+                        "description": "Exact team name.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "rarity",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "very_rare",
+                                "rare",
+                                "iconic",
+                                "limited"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "condition",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "mint_with_tags",
+                                "excellent",
+                                "very_good"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Search in name and team.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sort",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "newest",
+                                "price_asc",
+                                "price_desc",
+                                "year"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1
+                        }
                     }
                 ],
-                "servers": [
-                    {
-                        "url": "http://localhost:8000/api",
-                        "description": "Local API server"
+                "responses": {
+                    "200": {
+                        "description": "Paginated list of products.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductCollection"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid filter value."
                     }
-                ]
+                }
+            }
+        },
+        "/products/{slug}": {
+            "get": {
+                "tags": [
+                    "products"
+                ],
+                "summary": "Show a product",
+                "description": "Returns a single active product by slug.",
+                "operationId": "40f41934aaa607af50f29048632890bc",
+                "parameters": [
+                    {
+                        "name": "slug",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The product.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Product"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Product not found or inactive."
+                    }
+                }
+            }
+        },
+        "/wilayas": {
+            "get": {
+                "tags": [
+                    "wilayas"
+                ],
+                "summary": "List shipping wilayas",
+                "description": "Returns all active shipping destinations with their phone prefix and delivery fee.",
+                "operationId": "83f864e07d3885acd54237c0ccddcf4d",
+                "responses": {
+                    "200": {
+                        "description": "List of active wilayas.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/WilayaCollection"
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     },
     "components": {
-        "securitySchemes": {
-            "bearer": {
-                "type": "http",
-                "bearerFormat": "JWT",
-                "scheme": "bearer"
+        "schemas": {
+            "OrderRequest": {
+                "required": [
+                    "customer_name",
+                    "phone",
+                    "wilaya_id",
+                    "items"
+                ],
+                "properties": {
+                    "customer_name": {
+                        "type": "string",
+                        "example": "Karim Benali"
+                    },
+                    "phone": {
+                        "description": "Algerian mobile number (0[5-7]XXXXXXXX).",
+                        "type": "string",
+                        "example": "0550123456"
+                    },
+                    "wilaya_id": {
+                        "description": "ID of an active wilaya.",
+                        "type": "integer",
+                        "example": 16
+                    },
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OrderItemRequest"
+                        }
+                    }
+                },
+                "type": "object"
+            },
+            "OrderItemRequest": {
+                "required": [
+                    "product_id"
+                ],
+                "properties": {
+                    "product_id": {
+                        "description": "ID of an active product. Send one entry per unit ordered.",
+                        "type": "integer",
+                        "example": 1
+                    }
+                },
+                "type": "object"
+            },
+            "OrderItem": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "product_id": {
+                        "type": "integer"
+                    },
+                    "product_name": {
+                        "type": "string"
+                    },
+                    "unit_price": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "Order": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "order_number": {
+                        "type": "string",
+                        "example": "BC-20261007-AB12"
+                    },
+                    "customer_name": {
+                        "type": "string"
+                    },
+                    "phone": {
+                        "type": "string"
+                    },
+                    "wilaya": {
+                        "type": "string"
+                    },
+                    "subtotal": {
+                        "type": "integer"
+                    },
+                    "shipping_fee": {
+                        "type": "integer"
+                    },
+                    "total": {
+                        "type": "integer"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "confirmed",
+                            "shipped",
+                            "delivered",
+                            "cancelled"
+                        ]
+                    },
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OrderItem"
+                        }
+                    },
+                    "created_at": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "ProductImage": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "path": {
+                        "type": "string"
+                    },
+                    "sort_order": {
+                        "type": "integer"
+                    },
+                    "is_primary": {
+                        "type": "boolean"
+                    }
+                },
+                "type": "object"
+            },
+            "Product": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "team": {
+                        "type": "string"
+                    },
+                    "year": {
+                        "type": "integer"
+                    },
+                    "condition": {
+                        "type": "string"
+                    },
+                    "rarity": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "price": {
+                        "type": "integer"
+                    },
+                    "old_price": {
+                        "type": "integer",
+                        "nullable": true
+                    },
+                    "discount_percent": {
+                        "type": "integer"
+                    },
+                    "stock": {
+                        "type": "integer"
+                    },
+                    "in_stock": {
+                        "type": "boolean"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "images": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductImage"
+                        }
+                    },
+                    "created_at": {
+                        "type": "string"
+                    },
+                    "updated_at": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "ProductCollection": {
+                "properties": {
+                    "data": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Product"
+                        }
+                    },
+                    "links": {
+                        "type": "object"
+                    },
+                    "meta": {
+                        "type": "object"
+                    }
+                },
+                "type": "object"
+            },
+            "Wilaya": {
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "phone_number": {
+                        "type": "string"
+                    },
+                    "shipping_fee": {
+                        "type": "integer"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    }
+                },
+                "type": "object"
+            },
+            "WilayaCollection": {
+                "properties": {
+                    "data": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Wilaya"
+                        }
+                    }
+                },
+                "type": "object"
             }
         }
     },
     "tags": [
         {
-            "name": "Auth",
-            "description": "Authentication endpoints"
+            "name": "products",
+            "description": "Shirt catalog"
+        },
+        {
+            "name": "wilayas",
+            "description": "Shipping destinations"
+        },
+        {
+            "name": "orders",
+            "description": "Guest checkout"
         }
     ]
 }
