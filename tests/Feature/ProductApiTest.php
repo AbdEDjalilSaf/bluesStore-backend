@@ -2,8 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Enums\Condition;
-use App\Enums\Rarity;
 use App\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -27,39 +25,25 @@ class ProductApiTest extends TestCase
         $this->assertNotContains('hidden-shirt', array_column($response->json('data'), 'slug'));
     }
 
-    public function test_index_filters_by_team_rarity_and_condition(): void
+    public function test_index_filters_by_team(): void
     {
         Product::factory()->create([
-            'name' => 'Algeria Iconic',
-            'slug' => 'algeria-iconic',
+            'name' => 'Algeria Home',
+            'slug' => 'algeria-home',
             'team' => 'Algeria',
-            'rarity' => Rarity::Iconic,
-            'condition' => Condition::MintWithTags,
         ]);
         Product::factory()->create([
-            'name' => 'Brazil Rare',
-            'slug' => 'brazil-rare',
+            'name' => 'Brazil Away',
+            'slug' => 'brazil-away',
             'team' => 'Brazil',
-            'rarity' => Rarity::Rare,
-            'condition' => Condition::VeryGood,
         ]);
 
         $this->getJson('/api/products?team=Algeria')
             ->assertOk()
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.slug', 'algeria-iconic');
+            ->assertJsonPath('data.0.slug', 'algeria-home');
 
-        $this->getJson('/api/products?rarity=iconic')
-            ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.slug', 'algeria-iconic');
-
-        $this->getJson('/api/products?condition=mint_with_tags')
-            ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.slug', 'algeria-iconic');
-
-        $this->getJson('/api/products?team=Algeria&rarity=rare')
+        $this->getJson('/api/products?team=Algeria&search=brazil')
             ->assertOk()
             ->assertJsonCount(0, 'data');
     }
@@ -128,8 +112,7 @@ class ProductApiTest extends TestCase
 
     public function test_index_rejects_invalid_filters(): void
     {
-        $this->getJson('/api/products?rarity=legendary')->assertStatus(422);
-        $this->getJson('/api/products?condition=worn_out')->assertStatus(422);
+        $this->getJson('/api/products?per_page=0')->assertStatus(422);
         $this->getJson('/api/products?sort=random')->assertStatus(422);
     }
 

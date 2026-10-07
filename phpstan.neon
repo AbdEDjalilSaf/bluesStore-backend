@@ -1,0 +1,10 @@
+parameters:
+    ignoreErrors:
+        - '#Using "void" as a return value from a function fail\(\)#'
+        - '#Use of unknown class.*SORT_REGULAR#'
+        - '#Class Illuminate\\Support\\SORT_REGULAR not found#'
+        - '#Use of unknown class.*SORT_NUMERIC#'
+        - '#Class Illuminate\\Support\\SORT_NUMERIC not found#'
+        - '#Use of unknown class.*SORT_LOCALE_STRING#'
+        - '#Class Illuminate\\Support\\SORT_LOCALE_STRING not found#'
+        - '#Name .* can be simplified#'

@@ -9,3 +9,4 @@ Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/{slug}', [ProductController::class, 'show']);
 Route::get('/wilayas', [WilayaController::class, 'index']);
 Route::post('/orders', [OrderController::class, 'store'])->middleware('throttle:5,1');
+Route::get('/orders/track', [OrderController::class, 'track'])->middleware('throttle:5,1,order-track');

@@ -2,8 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\Condition;
-use App\Enums\Rarity;
 use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -20,8 +18,6 @@ class Product extends Model
         'slug',
         'team',
         'year',
-        'condition',
-        'rarity',
         'description',
         'price',
         'old_price',
@@ -37,8 +33,6 @@ class Product extends Model
     protected function casts(): array
     {
         return [
-            'condition' => Condition::class,
-            'rarity' => Rarity::class,
             'year' => 'integer',
             'price' => 'integer',
             'old_price' => 'integer',

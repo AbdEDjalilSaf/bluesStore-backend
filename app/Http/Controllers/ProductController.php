@@ -2,8 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\Condition;
-use App\Enums\Rarity;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
 use Illuminate\Http\Request;
@@ -22,8 +20,6 @@ class ProductController extends Controller
         tags: ['products'],
         parameters: [
             new OA\Parameter(name: 'team', in: 'query', description: 'Exact team name.', schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'rarity', in: 'query', schema: new OA\Schema(type: 'string', enum: ['very_rare', 'rare', 'iconic', 'limited'])),
-            new OA\Parameter(name: 'condition', in: 'query', schema: new OA\Schema(type: 'string', enum: ['mint_with_tags', 'excellent', 'very_good'])),
             new OA\Parameter(name: 'search', in: 'query', description: 'Search in name and team.', schema: new OA\Schema(type: 'string')),
             new OA\Parameter(name: 'sort', in: 'query', schema: new OA\Schema(type: 'string', enum: ['newest', 'price_asc', 'price_desc', 'year'])),
             new OA\Parameter(name: 'page', in: 'query', schema: new OA\Schema(type: 'integer', minimum: 1)),
@@ -38,8 +34,6 @@ class ProductController extends Controller
     {
         $filters = $request->validate([
             'team' => ['sometimes', 'string', 'max:255'],
-            'rarity' => ['sometimes', Rule::enum(Rarity::class)],
-            'condition' => ['sometimes', Rule::enum(Condition::class)],
             'search' => ['sometimes', 'string', 'max:255'],
             'sort' => ['sometimes', Rule::in(['newest', 'price_asc', 'price_desc', 'year'])],
             'page' => ['sometimes', 'integer', 'min:1'],
@@ -52,14 +46,6 @@ class ProductController extends Controller
 
         if (isset($filters['team'])) {
             $query->where('team', $filters['team']);
-        }
-
-        if (isset($filters['rarity'])) {
-            $query->where('rarity', $filters['rarity']);
-        }
-
-        if (isset($filters['condition'])) {
-            $query->where('condition', $filters['condition']);
         }
 
         if (isset($filters['search'])) {

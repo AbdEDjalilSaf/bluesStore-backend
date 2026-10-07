@@ -52,6 +52,58 @@
                 }
             }
         },
+        "/orders/track": {
+            "get": {
+                "tags": [
+                    "orders"
+                ],
+                "summary": "Track an order",
+                "description": "Returns the status, status timeline, items and totals of an order when the phone and order number both match. Every mismatch returns the same generic 404. Throttled to 5 requests per minute.",
+                "operationId": "04ded3f72909c0c5199696d439ad818b",
+                "parameters": [
+                    {
+                        "name": "phone",
+                        "in": "query",
+                        "description": "Algerian mobile number (0[5-7]XXXXXXXX) used when the order was placed.",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "0550123456"
+                        }
+                    },
+                    {
+                        "name": "order_number",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "BC-20261007-AB12"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The tracked order.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TrackedOrder"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No order matches the given phone and order number."
+                    },
+                    "422": {
+                        "description": "The phone or order number is missing or malformed."
+                    },
+                    "429": {
+                        "description": "Too many requests."
+                    }
+                }
+            }
+        },
         "/products": {
             "get": {
                 "tags": [
@@ -67,31 +119,6 @@
                         "description": "Exact team name.",
                         "schema": {
                             "type": "string"
-                        }
-                    },
-                    {
-                        "name": "rarity",
-                        "in": "query",
-                        "schema": {
-                            "type": "string",
-                            "enum": [
-                                "very_rare",
-                                "rare",
-                                "iconic",
-                                "limited"
-                            ]
-                        }
-                    },
-                    {
-                        "name": "condition",
-                        "in": "query",
-                        "schema": {
-                            "type": "string",
-                            "enum": [
-                                "mint_with_tags",
-                                "excellent",
-                                "very_good"
-                            ]
                         }
                     },
                     {
@@ -320,6 +347,65 @@
                 },
                 "type": "object"
             },
+            "OrderStatusChange": {
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "confirmed",
+                            "shipped",
+                            "delivered",
+                            "cancelled"
+                        ]
+                    },
+                    "changed_at": {
+                        "type": "string",
+                        "example": "2026-10-07T14:03:00.000000Z"
+                    }
+                },
+                "type": "object"
+            },
+            "TrackedOrder": {
+                "properties": {
+                    "order_number": {
+                        "type": "string",
+                        "example": "BC-20261007-AB12"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "confirmed",
+                            "shipped",
+                            "delivered",
+                            "cancelled"
+                        ]
+                    },
+                    "timeline": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OrderStatusChange"
+                        }
+                    },
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OrderItem"
+                        }
+                    },
+                    "subtotal": {
+                        "type": "integer"
+                    },
+                    "shipping_fee": {
+                        "type": "integer"
+                    },
+                    "total": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
             "ProductImage": {
                 "properties": {
                     "id": {
@@ -353,12 +439,6 @@
                     },
                     "year": {
                         "type": "integer"
-                    },
-                    "condition": {
-                        "type": "string"
-                    },
-                    "rarity": {
-                        "type": "string"
                     },
                     "description": {
                         "type": "string"

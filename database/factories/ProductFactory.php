@@ -2,8 +2,6 @@
 
 namespace Database\Factories;
 
-use App\Enums\Condition;
-use App\Enums\Rarity;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
@@ -51,8 +49,6 @@ class ProductFactory extends Factory
             'slug' => Str::slug($name),
             'team' => $team,
             'year' => $year,
-            'condition' => fake()->randomElement(Condition::cases()),
-            'rarity' => fake()->randomElement(Rarity::cases()),
             'description' => fake()->paragraph(),
             'price' => $price,
             'old_price' => fake()->boolean(70)
