@@ -10,7 +10,6 @@
         "darkaonline/l5-swagger": "^11.1",
         "dedoc/scramble": "^0.13.47",
         "laravel/framework": "^13.17",
-        "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0"
     },
     "require-dev": {

@@ -16,26 +16,4 @@ use OpenApi\Attributes as OA;
     url: '/api',
     description: 'API server',
 )]
-#[OA\SecurityScheme(
-    securityScheme: 'bearer',
-    type: 'http',
-    scheme: 'bearer',
-    bearerFormat: 'JWT',
-)]
-#[OA\Tag(
-    name: 'Auth',
-    description: 'Authentication endpoints',
-)]
-#[OA\Get(
-    path: '/user',
-    summary: 'Show the authenticated user.',
-    tags: ['Auth'],
-    security: [['bearer' => []]],
-    responses: [
-        new OA\Response(response: 200, description: 'Authenticated user information'),
-        new OA\Response(response: 401, description: 'Not authenticated'),
-    ],
-)]
-class OpenApi
-{
-}
+class OpenApi {}
