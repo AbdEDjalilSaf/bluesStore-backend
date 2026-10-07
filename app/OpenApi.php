@@ -13,8 +13,8 @@ use OpenApi\Attributes as OA;
     ),
 )]
 #[OA\Server(
-    url: 'http://localhost:8000/api',
-    description: 'Local API server',
+    url: '/api',
+    description: 'API server',
 )]
 #[OA\SecurityScheme(
     securityScheme: 'bearer',
