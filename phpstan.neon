@@ -1,4 +1,9 @@
 parameters:
+    level: 0
+    paths:
+        - app
+        - tests
+    reportUnmatchedIgnoredErrors: false
     ignoreErrors:
         - '#Using "void" as a return value from a function fail\(\)#'
         - '#Use of unknown class.*SORT_REGULAR#'

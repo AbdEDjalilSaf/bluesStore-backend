@@ -41,6 +41,22 @@ class Product extends Model
         return $this->hasMany(ProductImage::class);
     }
 
+    /**
+     * Find a product by its id or slug, or fail with a 404.
+     */
+    public static function findByKey(string $key): static
+    {
+        return static::query()
+            ->where(function ($query) use ($key) {
+                $query->where('slug', $key);
+
+                if (ctype_digit($key)) {
+                    $query->orWhere('id', $key);
+                }
+            })
+            ->firstOrFail();
+    }
+
     protected function discountPercent(): Attribute
     {
         return Attribute::get(function (): int {
