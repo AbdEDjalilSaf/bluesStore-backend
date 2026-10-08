@@ -287,6 +287,15 @@
                         }
                     },
                     {
+                        "name": "category_id",
+                        "in": "query",
+                        "description": "Exact category id.",
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    },
+                    {
                         "name": "search",
                         "in": "query",
                         "description": "Search in name and team.",
@@ -340,20 +349,59 @@
                         "description": "Invalid filter value."
                     }
                 }
+            },
+            "post": {
+                "tags": [
+                    "products"
+                ],
+                "summary": "Create a product",
+                "description": "Create a product and, when images are sent, store them on the public disk and create their rows in the same transaction (admin).",
+                "operationId": "399770d33fa4672f1216707d0e236763",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ProductRequest"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ProductRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Product created.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Product"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation failed."
+                    }
+                }
             }
         },
-        "/products/{slug}": {
+        "/products/{key}": {
             "get": {
                 "tags": [
                     "products"
                 ],
                 "summary": "Show a product",
-                "description": "Returns a single active product by slug.",
-                "operationId": "40f41934aaa607af50f29048632890bc",
+                "description": "Returns a single active product, resolved by id or slug.",
+                "operationId": "647b4d640353d30a3ba785c57d2b2464",
                 "parameters": [
                     {
-                        "name": "slug",
+                        "name": "key",
                         "in": "path",
+                        "description": "Product id or slug.",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -373,6 +421,85 @@
                     },
                     "404": {
                         "description": "Product not found or inactive."
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "products"
+                ],
+                "summary": "Delete a product",
+                "description": "Delete a product by id or slug. Removes its image rows and stored image files (admin).",
+                "operationId": "0a5faf514c129a314e2ead769e118c4e",
+                "parameters": [
+                    {
+                        "name": "key",
+                        "in": "path",
+                        "description": "Product id or slug.",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Product deleted."
+                    },
+                    "404": {
+                        "description": "Product not found."
+                    }
+                }
+            },
+            "patch": {
+                "tags": [
+                    "products"
+                ],
+                "summary": "Update a product",
+                "description": "Update product fields by id or slug and append uploaded images (admin).",
+                "operationId": "271b53142e0d54a28717998374accc61",
+                "parameters": [
+                    {
+                        "name": "key",
+                        "in": "path",
+                        "description": "Product id or slug.",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ProductUpdateRequest"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ProductUpdateRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Product updated.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Product"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Product not found."
+                    },
+                    "422": {
+                        "description": "Validation failed."
                     }
                 }
             }
@@ -459,12 +586,152 @@
                 },
                 "type": "object"
             },
+            "ProductRequest": {
+                "required": [
+                    "name",
+                    "slug",
+                    "team",
+                    "year",
+                    "description",
+                    "price",
+                    "stock"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "example": "Nigeria 1994 Home Shirt",
+                        "maxLength": 255
+                    },
+                    "slug": {
+                        "description": "Unique url-safe slug.",
+                        "type": "string",
+                        "example": "nigeria-1994-home-shirt",
+                        "maxLength": 255
+                    },
+                    "team": {
+                        "type": "string",
+                        "example": "Nigeria",
+                        "maxLength": 255
+                    },
+                    "year": {
+                        "type": "integer",
+                        "example": 1994,
+                        "maximum": 2100,
+                        "minimum": 1900
+                    },
+                    "description": {
+                        "type": "string",
+                        "example": "Classic home shirt with gold trim."
+                    },
+                    "price": {
+                        "description": "Price in DZD.",
+                        "type": "integer",
+                        "example": 4500,
+                        "minimum": 0
+                    },
+                    "old_price": {
+                        "type": "integer",
+                        "example": 6000,
+                        "nullable": true,
+                        "minimum": 0
+                    },
+                    "stock": {
+                        "type": "integer",
+                        "example": 10,
+                        "minimum": 0
+                    },
+                    "category_id": {
+                        "description": "Existing category id.",
+                        "type": "integer",
+                        "example": 1,
+                        "nullable": true
+                    },
+                    "is_active": {
+                        "type": "boolean",
+                        "default": true
+                    },
+                    "images": {
+                        "description": "Image uploads. Requires a multipart/form-data request.",
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "binary"
+                        }
+                    }
+                },
+                "type": "object"
+            },
             "CategoryUpdateRequest": {
                 "properties": {
                     "name": {
                         "type": "string",
                         "example": "National Teams",
                         "maxLength": 255
+                    }
+                },
+                "type": "object"
+            },
+            "ProductUpdateRequest": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "example": "Nigeria 1994 Home Shirt",
+                        "maxLength": 255
+                    },
+                    "slug": {
+                        "description": "Unique url-safe slug.",
+                        "type": "string",
+                        "example": "nigeria-1994-home-shirt",
+                        "maxLength": 255
+                    },
+                    "team": {
+                        "type": "string",
+                        "example": "Nigeria",
+                        "maxLength": 255
+                    },
+                    "year": {
+                        "type": "integer",
+                        "example": 1994,
+                        "maximum": 2100,
+                        "minimum": 1900
+                    },
+                    "description": {
+                        "type": "string",
+                        "example": "Classic home shirt with gold trim."
+                    },
+                    "price": {
+                        "description": "Price in DZD.",
+                        "type": "integer",
+                        "example": 4500,
+                        "minimum": 0
+                    },
+                    "old_price": {
+                        "type": "integer",
+                        "example": 6000,
+                        "nullable": true,
+                        "minimum": 0
+                    },
+                    "stock": {
+                        "type": "integer",
+                        "example": 10,
+                        "minimum": 0
+                    },
+                    "category_id": {
+                        "description": "Existing category id.",
+                        "type": "integer",
+                        "example": 1,
+                        "nullable": true
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "images": {
+                        "description": "Additional image uploads, appended to the existing ones. Requires a multipart/form-data request.",
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "binary"
+                        }
                     }
                 },
                 "type": "object"
