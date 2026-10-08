@@ -6,6 +6,7 @@ use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
@@ -14,31 +15,25 @@ class Product extends Model
     use HasFactory;
 
     protected $fillable = [
-        'name',
-        'slug',
-        'team',
-        'year',
-        'description',
-        'price',
-        'old_price',
-        'stock',
-        'is_active',
+        'category_id', 'name', 'slug', 'team', 'year', 'description',
+        'price', 'old_price', 'stock', 'is_active',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
+            'category_id' => 'integer',
             'year' => 'integer',
             'price' => 'integer',
             'old_price' => 'integer',
             'stock' => 'integer',
             'is_active' => 'boolean',
         ];
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
     }
 
     public function images(): HasMany
