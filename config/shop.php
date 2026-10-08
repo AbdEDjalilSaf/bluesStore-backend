@@ -16,4 +16,16 @@ return [
 
     'currency' => 'DZD',
 
+    /*
+    |--------------------------------------------------------------------------
+    | Admin Token
+    |--------------------------------------------------------------------------
+    |
+    | Shared secret sent in the X-Admin-Token header by the admin dashboard.
+    | When this is empty every admin endpoint is refused.
+    |
+    */
+
+    'admin_token' => env('SHOP_ADMIN_TOKEN'),
+
 ];

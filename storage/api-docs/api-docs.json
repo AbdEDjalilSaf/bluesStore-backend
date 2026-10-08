@@ -2,7 +2,7 @@
     "openapi": "3.0.0",
     "info": {
         "title": "Shirt Store API",
-        "description": "No-login storefront API for a retro football shirt shop. Browse the catalog and shipping wilayas, then place an order without an account. All amounts are in DZD.",
+        "description": "No-login storefront API for a retro football shirt shop. Browse the catalog and shipping wilayas, then place an order without an account. All amounts are in DZD. Admin endpoints require the X-Admin-Token header.",
         "contact": {
             "email": "hello@example.com"
         },
@@ -267,6 +267,187 @@
                         "description": "Too many requests."
                     }
                 }
+            }
+        },
+        "/admin/orders": {
+            "get": {
+                "tags": [
+                    "orders"
+                ],
+                "summary": "List orders (admin)",
+                "description": "Paginated list of the newest orders, optionally filtered by status. Requires the X-Admin-Token header.",
+                "operationId": "475e4a227d3540fb0c62df6f58c47e37",
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "description": "Only return orders in this status.",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "pending",
+                                "confirmed",
+                                "shipped",
+                                "delivered",
+                                "cancelled"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    },
+                    {
+                        "name": "per_page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated list of orders.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OrderCollection"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "The X-Admin-Token header is missing or does not match the configured admin token."
+                    },
+                    "422": {
+                        "description": "The status filter is not a valid order status."
+                    }
+                },
+                "security": [
+                    {
+                        "adminToken": []
+                    }
+                ]
+            }
+        },
+        "/admin/orders/{id}": {
+            "get": {
+                "tags": [
+                    "orders"
+                ],
+                "summary": "Get an order (admin)",
+                "description": "Returns a single order with its items and full status history. Requires the X-Admin-Token header.",
+                "operationId": "0adf4cf59e05d2fd59b3e93c45235220",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The order.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Order"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "The X-Admin-Token header is missing or does not match the configured admin token."
+                    },
+                    "404": {
+                        "description": "Order not found."
+                    }
+                },
+                "security": [
+                    {
+                        "adminToken": []
+                    }
+                ]
+            }
+        },
+        "/admin/orders/{id}/status": {
+            "patch": {
+                "tags": [
+                    "orders"
+                ],
+                "summary": "Update an order status (admin)",
+                "description": "Advances the order one step (pending → confirmed → shipped → delivered) or cancels it while it is still pending or confirmed. Cancelling restores the stock of every item. Requires the X-Admin-Token header.",
+                "operationId": "65a1ea8329f5c98361011b7db6188516",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "status"
+                                ],
+                                "properties": {
+                                    "status": {
+                                        "type": "string",
+                                        "example": "confirmed",
+                                        "enum": [
+                                            "confirmed",
+                                            "shipped",
+                                            "delivered",
+                                            "cancelled"
+                                        ]
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The updated order.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Order"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "The X-Admin-Token header is missing or does not match the configured admin token."
+                    },
+                    "404": {
+                        "description": "Order not found."
+                    },
+                    "422": {
+                        "description": "The status is invalid or the transition is not allowed from the current status."
+                    }
+                },
+                "security": [
+                    {
+                        "adminToken": []
+                    }
+                ]
             }
         },
         "/products": {
@@ -830,8 +1011,32 @@
                             "$ref": "#/components/schemas/OrderItem"
                         }
                     },
+                    "timeline": {
+                        "description": "Status history. Present only when the order history is loaded, e.g. on the admin order detail.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/OrderStatusChange"
+                        }
+                    },
                     "created_at": {
                         "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "OrderCollection": {
+                "properties": {
+                    "data": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Order"
+                        }
+                    },
+                    "links": {
+                        "type": "object"
+                    },
+                    "meta": {
+                        "type": "object"
                     }
                 },
                 "type": "object"
@@ -1013,6 +1218,14 @@
                     }
                 },
                 "type": "object"
+            }
+        },
+        "securitySchemes": {
+            "adminToken": {
+                "type": "apiKey",
+                "description": "Shared admin secret configured in SHOP_ADMIN_TOKEN.",
+                "name": "X-Admin-Token",
+                "in": "header"
             }
         }
     },

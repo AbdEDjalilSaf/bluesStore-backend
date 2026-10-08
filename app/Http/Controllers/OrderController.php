@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\OrderStatus;
 use App\Exceptions\NotEnoughStockException;
 use App\Exceptions\ProductUnavailableException;
 use App\Http\Requests\StoreOrderRequest;
@@ -11,6 +12,8 @@ use App\Models\Order;
 use App\Services\OrderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Validation\Rule;
 use OpenApi\Attributes as OA;
 
 class OrderController extends Controller
@@ -87,5 +90,124 @@ class OrderController extends Controller
         }
 
         return new OrderTrackingResource($order);
+    }
+
+    /**
+     * List orders with a status filter and pagination (admin).
+     */
+    #[OA\Get(
+        path: '/admin/orders',
+        summary: 'List orders (admin)',
+        description: 'Paginated list of the newest orders, optionally filtered by status. Requires the X-Admin-Token header.',
+        tags: ['orders'],
+        security: [['adminToken' => []]],
+        parameters: [
+            new OA\Parameter(name: 'status', in: 'query', description: 'Only return orders in this status.', schema: new OA\Schema(type: 'string', enum: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'])),
+            new OA\Parameter(name: 'page', in: 'query', schema: new OA\Schema(type: 'integer', minimum: 1)),
+            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', minimum: 1, maximum: 100)),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Paginated list of orders.', content: new OA\JsonContent(ref: '#/components/schemas/OrderCollection')),
+            new OA\Response(response: 401, description: 'The X-Admin-Token header is missing or does not match the configured admin token.'),
+            new OA\Response(response: 422, description: 'The status filter is not a valid order status.'),
+        ]
+    )]
+    public function index(Request $request): AnonymousResourceCollection
+    {
+        $filters = $request->validate([
+            'status' => ['sometimes', 'string', Rule::enum(OrderStatus::class)],
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $query = Order::query()->with('items');
+
+        if (isset($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        return OrderResource::collection(
+            $query->orderByDesc('id')->paginate($filters['per_page'] ?? 15)->withQueryString()
+        );
+    }
+
+    /**
+     * Get one order with its items and status history (admin).
+     */
+    #[OA\Get(
+        path: '/admin/orders/{id}',
+        summary: 'Get an order (admin)',
+        description: 'Returns a single order with its items and full status history. Requires the X-Admin-Token header.',
+        tags: ['orders'],
+        security: [['adminToken' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'The order.', content: new OA\JsonContent(ref: '#/components/schemas/Order')),
+            new OA\Response(response: 401, description: 'The X-Admin-Token header is missing or does not match the configured admin token.'),
+            new OA\Response(response: 404, description: 'Order not found.'),
+        ]
+    )]
+    public function show(int $id): OrderResource
+    {
+        $order = Order::query()
+            ->with(['items', 'statusHistories'])
+            ->findOrFail($id);
+
+        return new OrderResource($order);
+    }
+
+    /**
+     * Move an order to the next status, or cancel it (admin).
+     */
+    #[OA\Patch(
+        path: '/admin/orders/{id}/status',
+        summary: 'Update an order status (admin)',
+        description: 'Advances the order one step (pending → confirmed → shipped → delivered) or cancels it while it is still pending or confirmed. Cancelling restores the stock of every item. Requires the X-Admin-Token header.',
+        tags: ['orders'],
+        security: [['adminToken' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['status'],
+                properties: [
+                    new OA\Property(property: 'status', type: 'string', enum: ['confirmed', 'shipped', 'delivered', 'cancelled'], example: 'confirmed'),
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'The updated order.', content: new OA\JsonContent(ref: '#/components/schemas/Order')),
+            new OA\Response(response: 401, description: 'The X-Admin-Token header is missing or does not match the configured admin token.'),
+            new OA\Response(response: 404, description: 'Order not found.'),
+            new OA\Response(response: 422, description: 'The status is invalid or the transition is not allowed from the current status.'),
+        ]
+    )]
+    public function updateStatus(Request $request, int $id): OrderResource|JsonResponse
+    {
+        $order = Order::query()->findOrFail($id);
+
+        $data = $request->validate([
+            'status' => ['required', 'string', Rule::enum(OrderStatus::class)],
+        ]);
+
+        $target = OrderStatus::from($data['status']);
+
+        if (! $order->status->canTransitionTo($target)) {
+            return response()->json([
+                'message' => 'Cannot change order status from '.$order->status->value.' to '.$target->value.'.',
+            ], 422);
+        }
+
+        if ($target === OrderStatus::Cancelled) {
+            $this->orderService->cancel($order);
+        } else {
+            $order->update(['status' => $target]);
+        }
+
+        return new OrderResource($order->load(['items', 'statusHistories']));
     }
 }

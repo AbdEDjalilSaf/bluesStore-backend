@@ -20,7 +20,17 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'total', type: 'integer'),
         new OA\Property(property: 'status', type: 'string', enum: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']),
         new OA\Property(property: 'items', type: 'array', items: new OA\Items(ref: '#/components/schemas/OrderItem')),
+        new OA\Property(property: 'timeline', type: 'array', description: 'Status history. Present only when the order history is loaded, e.g. on the admin order detail.', items: new OA\Items(ref: '#/components/schemas/OrderStatusChange')),
         new OA\Property(property: 'created_at', type: 'string'),
+    ]
+)]
+#[OA\Schema(
+    schema: 'OrderCollection',
+    type: 'object',
+    properties: [
+        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/Order')),
+        new OA\Property(property: 'links', type: 'object'),
+        new OA\Property(property: 'meta', type: 'object'),
     ]
 )]
 class OrderResource extends JsonResource
@@ -41,6 +51,7 @@ class OrderResource extends JsonResource
             'total' => $this->total,
             'status' => $this->status?->value,
             'items' => OrderItemResource::collection($this->whenLoaded('items')),
+            'timeline' => OrderStatusHistoryResource::collection($this->whenLoaded('statusHistories')),
             'created_at' => $this->created_at,
         ];
     }
