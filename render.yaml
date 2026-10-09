@@ -1,0 +1,50 @@
+# Render Blueprint
+#
+# Resource names (keep wiring references in sync):
+#   web: bluesstore-backend-2
+#   db:  bluesstore-db
+#
+# Adding an existing resource: Render applies this configuration to the
+# existing service/database when the names below match the dashboard names.
+
+services:
+  - type: web
+    runtime: docker
+    name: bluesstore-backend-2
+    healthCheckPath: /up
+    startCommand: >
+      php artisan migrate --force &&
+      php artisan db:seed --force &&
+      php artisan db:seed --class=DemoProductSeeder --force &&
+      php artisan serve --host=0.0.0.0 --port=${PORT:-10000}
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_URL
+        value: https://bluesstore-backend-2.onrender.com
+      - key: APP_KEY
+        sync: false # Set in the Render Dashboard: output of `php artisan key:generate --show`
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: LOG_LEVEL
+        value: info
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_URL
+        fromDatabase:
+          name: bluesstore-db
+          property: connectionString
+      - key: SESSION_DRIVER
+        value: database
+      - key: CACHE_STORE
+        value: database
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: SHOP_ADMIN_TOKEN
+        sync: false # Optional: enables /api/admin/* via X-Admin-Token header
+
+databases:
+  - name: bluesstore-db
+    databaseName: bluesstore
