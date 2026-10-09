@@ -11,7 +11,6 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rule;
 use OpenApi\Attributes as OA;
 use RuntimeException;
 use Throwable;
@@ -19,68 +18,27 @@ use Throwable;
 class ProductController extends Controller
 {
     /**
-     * List products with filters, sorting and pagination.
+     * List all active shirts without pagination or filters.
      */
     #[OA\Get(
         path: '/products',
-        summary: 'List active products',
-        description: 'Paginated product list with filters, searching, sorting and computed fields (discount_percent, in_stock).',
+        summary: 'List all active shirts',
+        description: 'Returns all active shirts without pagination, filters, or sorting.',
         tags: ['products'],
-        parameters: [
-            new OA\Parameter(name: 'team', in: 'query', description: 'Exact team name.', schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'category_id', in: 'query', description: 'Exact category id.', schema: new OA\Schema(type: 'integer', minimum: 1)),
-            new OA\Parameter(name: 'search', in: 'query', description: 'Search in name and team.', schema: new OA\Schema(type: 'string')),
-            new OA\Parameter(name: 'sort', in: 'query', schema: new OA\Schema(type: 'string', enum: ['newest', 'price_asc', 'price_desc', 'year'])),
-            new OA\Parameter(name: 'page', in: 'query', schema: new OA\Schema(type: 'integer', minimum: 1)),
-            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', minimum: 1, maximum: 100)),
-        ],
         responses: [
-            new OA\Response(response: 200, description: 'Paginated list of products.', content: new OA\JsonContent(ref: '#/components/schemas/ProductCollection')),
-            new OA\Response(response: 422, description: 'Invalid filter value.'),
+            new OA\Response(response: 200, description: 'List of all active shirts.', content: new OA\JsonContent(ref: '#/components/schemas/ProductCollection')),
         ]
     )]
     public function index(Request $request)
     {
-        $filters = $request->validate([
-            'team' => ['sometimes', 'string', 'max:255'],
-            'category_id' => ['sometimes', 'integer', Rule::exists('categories', 'id')],
-            'search' => ['sometimes', 'string', 'max:255'],
-            'sort' => ['sometimes', Rule::in(['newest', 'price_asc', 'price_desc', 'year'])],
-            'page' => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
-        ]);
-
-        $query = Product::query()
+        $products = Product::query()
             ->where('is_active', true)
-            ->with(['images' => fn ($query) => $query->orderBy('sort_order')]);
+            ->with(['images' => fn ($query) => $query->orderBy('sort_order')])
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get();
 
-        if (isset($filters['team'])) {
-            $query->where('team', $filters['team']);
-        }
-
-        if (isset($filters['category_id'])) {
-            $query->where('category_id', $filters['category_id']);
-        }
-
-        if (isset($filters['search'])) {
-            $search = $filters['search'];
-
-            $query->where(function ($query) use ($search) {
-                $query->where('name', 'like', "%{$search}%")
-                    ->orWhere('team', 'like', "%{$search}%");
-            });
-        }
-
-        match ($filters['sort'] ?? 'newest') {
-            'price_asc' => $query->orderBy('price')->orderBy('id'),
-            'price_desc' => $query->orderByDesc('price')->orderBy('id'),
-            'year' => $query->orderByDesc('year')->orderBy('id'),
-            default => $query->orderByDesc('created_at')->orderByDesc('id'),
-        };
-
-        return ProductResource::collection(
-            $query->paginate($filters['per_page'] ?? 12)->withQueryString()
-        );
+        return ProductResource::collection($products);
     }
 
     /**

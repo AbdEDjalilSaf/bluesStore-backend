@@ -15,7 +15,7 @@ class ProductApiTest extends TestCase
 
     private const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
-    public function test_index_returns_paginated_active_products_only(): void
+    public function test_index_returns_all_active_shirts_without_pagination(): void
     {
         Product::factory()->count(3)->create();
         Product::factory()->create(['name' => 'Hidden Shirt', 'slug' => 'hidden-shirt', 'is_active' => false]);
@@ -24,78 +24,36 @@ class ProductApiTest extends TestCase
 
         $response->assertOk()
             ->assertJsonCount(3, 'data')
-            ->assertJsonPath('meta.total', 3)
-            ->assertJsonPath('meta.per_page', 12);
+            ->assertJsonMissingPath('meta');
 
         $this->assertNotContains('hidden-shirt', array_column($response->json('data'), 'slug'));
     }
 
-    public function test_index_filters_by_team(): void
+    public function test_index_ignores_filter_search_sort_and_pagination_params(): void
     {
         Product::factory()->create([
             'name' => 'Algeria Home',
             'slug' => 'algeria-home',
             'team' => 'Algeria',
+            'price' => 5000,
         ]);
         Product::factory()->create([
             'name' => 'Brazil Away',
             'slug' => 'brazil-away',
             'team' => 'Brazil',
+            'price' => 1000,
         ]);
 
-        $this->getJson('/api/products?team=Algeria')
+        $category = Category::factory()->create(['name' => 'Scarves']);
+
+        $response = $this->getJson('/api/products?team=Algeria&search=naija&sort=price_asc&category_id='.$category->id.'&page=2&per_page=1')
             ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.slug', 'algeria-home');
+            ->assertJsonCount(2, 'data')
+            ->assertJsonMissingPath('meta');
 
-        $this->getJson('/api/products?team=Algeria&search=brazil')
-            ->assertOk()
-            ->assertJsonCount(0, 'data');
-    }
+        $slugs = array_column($response->json('data'), 'slug');
 
-    public function test_index_search_matches_name_and_team(): void
-    {
-        Product::factory()->create(['name' => 'Retro Naija Classic', 'slug' => 'retro-naija', 'team' => 'Nigeria']);
-        Product::factory()->create(['name' => 'Home Shirt', 'slug' => 'home-shirt', 'team' => 'Algeria']);
-
-        $this->getJson('/api/products?search=naija')
-            ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.slug', 'retro-naija');
-
-        $this->getJson('/api/products?search=algeria')
-            ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.slug', 'home-shirt');
-    }
-
-    public function test_index_sorts_by_price_and_year(): void
-    {
-        Product::factory()->create(['name' => 'Cheap', 'slug' => 'cheap', 'price' => 1000, 'year' => 1990]);
-        Product::factory()->create(['name' => 'Mid', 'slug' => 'mid', 'price' => 5000, 'year' => 2020]);
-        Product::factory()->create(['name' => 'Expensive', 'slug' => 'expensive', 'price' => 9000, 'year' => 2005]);
-
-        $this->getJson('/api/products?sort=price_asc')
-            ->assertOk()
-            ->assertJsonPath('data.0.slug', 'cheap')
-            ->assertJsonPath('data.1.slug', 'mid')
-            ->assertJsonPath('data.2.slug', 'expensive');
-
-        $this->getJson('/api/products?sort=price_desc')
-            ->assertOk()
-            ->assertJsonPath('data.0.slug', 'expensive')
-            ->assertJsonPath('data.2.slug', 'cheap');
-
-        $this->getJson('/api/products?sort=year')
-            ->assertOk()
-            ->assertJsonPath('data.0.slug', 'mid')
-            ->assertJsonPath('data.2.slug', 'cheap');
-
-        $newest = Product::factory()->create(['name' => 'Newest', 'slug' => 'newest']);
-
-        $this->getJson('/api/products?sort=newest')
-            ->assertOk()
-            ->assertJsonPath('data.0.slug', $newest->slug);
+        $this->assertEqualsCanonicalizing(['algeria-home', 'brazil-away'], $slugs);
     }
 
     public function test_index_returns_computed_discount_and_stock_fields(): void
@@ -113,24 +71,6 @@ class ProductApiTest extends TestCase
             ->assertJsonPath('data.0.discount_percent', 50)
             ->assertJsonPath('data.0.in_stock', true)
             ->assertJsonStructure(['data' => [['images']]]);
-    }
-
-    public function test_index_rejects_invalid_filters(): void
-    {
-        $this->getJson('/api/products?per_page=0')->assertStatus(422);
-        $this->getJson('/api/products?sort=random')->assertStatus(422);
-    }
-
-    public function test_index_paginates_with_per_page(): void
-    {
-        Product::factory()->count(5)->create();
-
-        $this->getJson('/api/products?per_page=2&page=2')
-            ->assertOk()
-            ->assertJsonCount(2, 'data')
-            ->assertJsonPath('meta.current_page', 2)
-            ->assertJsonPath('meta.per_page', 2)
-            ->assertJsonPath('meta.total', 5);
     }
 
     public function test_show_returns_product_by_slug(): void
@@ -170,31 +110,6 @@ class ProductApiTest extends TestCase
             ->assertJsonPath('data.slug', 'by-id');
 
         $this->getJson('/api/products/999')->assertNotFound();
-    }
-
-    public function test_index_filters_by_category(): void
-    {
-        $shirts = Category::factory()->create(['name' => 'Shirts']);
-        $scarves = Category::factory()->create(['name' => 'Scarves']);
-
-        Product::factory()->create(['slug' => 'shirt-one', 'category_id' => $shirts->id]);
-        Product::factory()->create(['slug' => 'scarf-one', 'category_id' => $scarves->id]);
-
-        $this->getJson('/api/products?category_id='.$shirts->id)
-            ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.slug', 'shirt-one');
-
-        $this->getJson('/api/products?category_id='.$scarves->id)
-            ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.slug', 'scarf-one');
-    }
-
-    public function test_index_rejects_unknown_category_id(): void
-    {
-        $this->getJson('/api/products?category_id=999')->assertStatus(422);
-        $this->getJson('/api/products?category_id=abc')->assertStatus(422);
     }
 
     public function test_store_creates_product(): void

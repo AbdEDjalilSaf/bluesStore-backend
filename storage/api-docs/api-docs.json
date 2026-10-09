@@ -455,69 +455,12 @@
                 "tags": [
                     "products"
                 ],
-                "summary": "List active products",
-                "description": "Paginated product list with filters, searching, sorting and computed fields (discount_percent, in_stock).",
+                "summary": "List all active shirts",
+                "description": "Returns all active shirts without pagination, filters, or sorting.",
                 "operationId": "c1ff6f862214e1896c59cfe0491ce0e8",
-                "parameters": [
-                    {
-                        "name": "team",
-                        "in": "query",
-                        "description": "Exact team name.",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "name": "category_id",
-                        "in": "query",
-                        "description": "Exact category id.",
-                        "schema": {
-                            "type": "integer",
-                            "minimum": 1
-                        }
-                    },
-                    {
-                        "name": "search",
-                        "in": "query",
-                        "description": "Search in name and team.",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "name": "sort",
-                        "in": "query",
-                        "schema": {
-                            "type": "string",
-                            "enum": [
-                                "newest",
-                                "price_asc",
-                                "price_desc",
-                                "year"
-                            ]
-                        }
-                    },
-                    {
-                        "name": "page",
-                        "in": "query",
-                        "schema": {
-                            "type": "integer",
-                            "minimum": 1
-                        }
-                    },
-                    {
-                        "name": "per_page",
-                        "in": "query",
-                        "schema": {
-                            "type": "integer",
-                            "maximum": 100,
-                            "minimum": 1
-                        }
-                    }
-                ],
                 "responses": {
                     "200": {
-                        "description": "Paginated list of products.",
+                        "description": "List of all active shirts.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -525,9 +468,6 @@
                                 }
                             }
                         }
-                    },
-                    "422": {
-                        "description": "Invalid filter value."
                     }
                 }
             },
