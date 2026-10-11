@@ -39,6 +39,9 @@ RUN mkdir -p \
 
 RUN chmod -R 775 storage bootstrap/cache
 
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 EXPOSE 10000
 
-CMD php artisan serve --host=0.0.0.0 --port=${PORT:-10000}
+ENTRYPOINT ["docker-entrypoint.sh"]
