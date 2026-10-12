@@ -114,6 +114,28 @@
             }
         </style>
     @endif
+    <script>
+        (function () {
+            var matchMedia = window.matchMedia;
+
+            window.matchMedia = function (query) {
+                if (query === '(prefers-color-scheme: dark)') {
+                    return {
+                        matches: false,
+                        media: query,
+                        onchange: null,
+                        addListener: function () {},
+                        removeListener: function () {},
+                        addEventListener: function () {},
+                        removeEventListener: function () {},
+                        dispatchEvent: function () { return false; }
+                    };
+                }
+
+                return matchMedia.apply(window, arguments);
+            };
+        })();
+    </script>
 </head>
 
 <body @if(config('l5-swagger.defaults.ui.display.dark_mode')) id="dark-mode" @endif>
