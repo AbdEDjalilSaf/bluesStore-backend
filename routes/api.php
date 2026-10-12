@@ -21,7 +21,7 @@ Route::get('/categories/{id}', [CategoryController::class, 'show']);
 Route::patch('/categories/{id}', [CategoryController::class, 'update']);
 Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
 
-Route::prefix('admin')->middleware('admin')->group(function (): void {
+Route::prefix('admin')->group(function (): void {
     Route::get('/orders', [OrderController::class, 'index']);
     Route::get('/orders/{id}', [OrderController::class, 'show']);
     Route::patch('/orders/{id}/status', [OrderController::class, 'updateStatus']);

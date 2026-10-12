@@ -52,35 +52,23 @@ class AdminOrderTest extends TestCase
         return Order::query()->latest('id')->firstOrFail();
     }
 
-    public function test_admin_endpoints_require_a_valid_admin_token(): void
+    public function test_admin_endpoints_are_public(): void
     {
         $product = $this->makeProduct();
         $order = $this->placeOrder($product, 2);
 
         $this->json('GET', '/api/admin/orders')
-            ->assertStatus(401)
-            ->assertJsonPath('message', 'Unauthorized.');
-
-        $this->json('GET', "/api/admin/orders/{$order->id}")
-            ->assertStatus(401)
-            ->assertJsonPath('message', 'Unauthorized.');
-
-        $this->json('PATCH', "/api/admin/orders/{$order->id}/status", ['status' => 'confirmed'])
-            ->assertStatus(401)
-            ->assertJsonPath('message', 'Unauthorized.');
-
-        $this->json('GET', '/api/admin/orders', [], ['X-Admin-Token' => 'wrong-token'])
-            ->assertStatus(401);
-
-        $this->json('PATCH', "/api/admin/orders/{$order->id}/status", ['status' => 'confirmed'], ['X-Admin-Token' => 'wrong-token'])
-            ->assertStatus(401);
-
-        $this->assertSame(OrderStatus::Pending, $order->fresh()->status);
-        $this->assertSame(3, $product->fresh()->stock);
-
-        $this->json('GET', '/api/admin/orders', [], $this->adminHeaders)
             ->assertStatus(200)
             ->assertJsonCount(1, 'data');
+
+        $this->json('GET', "/api/admin/orders/{$order->id}")
+            ->assertStatus(200)
+            ->assertJsonPath('data.id', $order->id)
+            ->assertJsonCount(2, 'data.items');
+
+        $this->json('PATCH', "/api/admin/orders/{$order->id}/status", ['status' => 'confirmed'])
+            ->assertStatus(200)
+            ->assertJsonPath('data.status', 'confirmed');
     }
 
     public function test_index_is_paginated_and_filters_by_status(): void

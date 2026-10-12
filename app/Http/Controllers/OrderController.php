@@ -98,9 +98,8 @@ class OrderController extends Controller
     #[OA\Get(
         path: '/admin/orders',
         summary: 'List orders (admin)',
-        description: 'Paginated list of the newest orders, optionally filtered by status. Requires the X-Admin-Token header.',
+        description: 'Paginated list of the newest orders, optionally filtered by status.',
         tags: ['orders'],
-        security: [['adminToken' => []]],
         parameters: [
             new OA\Parameter(name: 'status', in: 'query', description: 'Only return orders in this status.', schema: new OA\Schema(type: 'string', enum: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'])),
             new OA\Parameter(name: 'page', in: 'query', schema: new OA\Schema(type: 'integer', minimum: 1)),
@@ -108,7 +107,6 @@ class OrderController extends Controller
         ],
         responses: [
             new OA\Response(response: 200, description: 'Paginated list of orders.', content: new OA\JsonContent(ref: '#/components/schemas/OrderCollection')),
-            new OA\Response(response: 401, description: 'The X-Admin-Token header is missing or does not match the configured admin token.'),
             new OA\Response(response: 422, description: 'The status filter is not a valid order status.'),
         ]
     )]
@@ -137,15 +135,13 @@ class OrderController extends Controller
     #[OA\Get(
         path: '/admin/orders/{id}',
         summary: 'Get an order (admin)',
-        description: 'Returns a single order with its items and full status history. Requires the X-Admin-Token header.',
+        description: 'Returns a single order with its items and full status history.',
         tags: ['orders'],
-        security: [['adminToken' => []]],
         parameters: [
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
         ],
         responses: [
             new OA\Response(response: 200, description: 'The order.', content: new OA\JsonContent(ref: '#/components/schemas/Order')),
-            new OA\Response(response: 401, description: 'The X-Admin-Token header is missing or does not match the configured admin token.'),
             new OA\Response(response: 404, description: 'Order not found.'),
         ]
     )]
@@ -164,9 +160,8 @@ class OrderController extends Controller
     #[OA\Patch(
         path: '/admin/orders/{id}/status',
         summary: 'Update an order status (admin)',
-        description: 'Advances the order one step (pending → confirmed → shipped → delivered) or cancels it while it is still pending or confirmed. Cancelling restores the stock of every item. Requires the X-Admin-Token header.',
+        description: 'Advances the order one step (pending → confirmed → shipped → delivered) or cancels it while it is still pending or confirmed. Cancelling restores the stock of every item.',
         tags: ['orders'],
-        security: [['adminToken' => []]],
         parameters: [
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
         ],
@@ -181,7 +176,6 @@ class OrderController extends Controller
         ),
         responses: [
             new OA\Response(response: 200, description: 'The updated order.', content: new OA\JsonContent(ref: '#/components/schemas/Order')),
-            new OA\Response(response: 401, description: 'The X-Admin-Token header is missing or does not match the configured admin token.'),
             new OA\Response(response: 404, description: 'Order not found.'),
             new OA\Response(response: 422, description: 'The status is invalid or the transition is not allowed from the current status.'),
         ]
