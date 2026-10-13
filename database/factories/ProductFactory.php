@@ -55,6 +55,7 @@ class ProductFactory extends Factory
                 ? (int) round($price * fake()->randomFloat(2, 1.1, 1.6))
                 : null,
             'stock' => fake()->numberBetween(0, 25),
+            'size' => fake()->randomElement(['S,M,L', 'M,L,XL', 'M', 'L,XL', 'S,M,L,XL']),
             'is_active' => true,
         ];
     }

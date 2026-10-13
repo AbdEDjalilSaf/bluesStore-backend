@@ -19,6 +19,7 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'price', type: 'integer', minimum: 0, description: 'Price in DZD.', example: 4500),
         new OA\Property(property: 'old_price', type: 'integer', minimum: 0, nullable: true, example: 6000),
         new OA\Property(property: 'stock', type: 'integer', minimum: 0, example: 10),
+        new OA\Property(property: 'size', type: 'string', maxLength: 255, nullable: true, description: 'Comma-separated list of available sizes.', example: 'S,M,L,XL'),
         new OA\Property(property: 'category_id', type: 'integer', nullable: true, description: 'Existing category id.', example: 1),
         new OA\Property(property: 'is_active', type: 'boolean', default: true),
         new OA\Property(
@@ -50,6 +51,7 @@ class StoreProductRequest extends FormRequest
             'price' => ['required', 'integer', 'min:0'],
             'old_price' => ['nullable', 'integer', 'min:0'],
             'stock' => ['required', 'integer', 'min:0'],
+            'size' => ['nullable', 'string', 'max:255'],
             'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')],
             'is_active' => ['sometimes', 'boolean'],
             'images' => ['sometimes', 'array', 'max:8'],

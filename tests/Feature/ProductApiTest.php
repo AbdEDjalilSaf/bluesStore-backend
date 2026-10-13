@@ -134,6 +134,20 @@ class ProductApiTest extends TestCase
         ]);
     }
 
+    public function test_store_persists_size(): void
+    {
+        $this->postJson('/api/products', $this->validProductPayload([
+            'size' => 'S,M,L,XL',
+        ]))
+            ->assertStatus(201)
+            ->assertJsonPath('data.size', 'S,M,L,XL');
+
+        $this->assertDatabaseHas('products', [
+            'slug' => 'nigeria-1994-home-shirt',
+            'size' => 'S,M,L,XL',
+        ]);
+    }
+
     public function test_store_requires_required_fields(): void
     {
         $this->postJson('/api/products', [])
@@ -221,6 +235,17 @@ class ProductApiTest extends TestCase
 
         $response->assertStatus(422)->assertJsonValidationErrors(['images.0']);
         $this->assertDatabaseMissing('products', ['slug' => 'nigeria-1994-home-shirt']);
+    }
+
+    public function test_update_changes_size(): void
+    {
+        $product = Product::factory()->create(['size' => 'M']);
+
+        $this->patchJson('/api/products/'.$product->id, ['size' => 'L,XL'])
+            ->assertOk()
+            ->assertJsonPath('data.size', 'L,XL');
+
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'size' => 'L,XL']);
     }
 
     public function test_update_changes_fields_by_id(): void
