@@ -113,6 +113,30 @@ class AdminOrderTest extends TestCase
             ->assertJsonValidationErrors('status');
     }
 
+    public function test_index_serves_stale_data_while_refreshing_the_cache_in_the_background(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->placeOrder($product);
+
+        $this->json('GET', '/api/admin/orders', [], $this->adminHeaders)
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.status', 'pending');
+
+        $this->travel(60)->seconds();
+
+        // Query-builder update: no model events, so the list cache version is
+        // not rotated and the cached page legitimately enters the stale window.
+        Order::query()->whereKey($order->id)->update(['status' => OrderStatus::Confirmed]);
+
+        $this->json('GET', '/api/admin/orders', [], $this->adminHeaders)
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.status', 'pending');
+
+        $this->json('GET', '/api/admin/orders', [], $this->adminHeaders)
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.status', 'confirmed');
+    }
+
     public function test_show_returns_the_order_with_items_and_status_history(): void
     {
         $product = $this->makeProduct();

@@ -20,11 +20,18 @@ use OpenApi\Attributes as OA;
 class OrderController extends Controller
 {
     /**
-     * Seconds an admin order page may be served from cache. Mutations rotate
-     * the list cache version, so this is a safety net, not the main freshness
-     * mechanism.
+     * Seconds an admin order page is served from cache without recalculation.
+     * Mutations rotate the list cache version, so this is a safety net, not
+     * the main freshness mechanism.
      */
-    private const ORDERS_CACHE_TTL = 30;
+    private const ORDERS_CACHE_FRESH_SECONDS = 30;
+
+    /**
+     * Extra seconds a cached admin order page may be served stale while a
+     * deferred refresh repopulates it in the background, after the response
+     * has been sent.
+     */
+    private const ORDERS_CACHE_STALE_SECONDS = 300;
 
     /**
      * Only the columns the resource actually reads — avoids fetching/transferring
@@ -160,9 +167,9 @@ class OrderController extends Controller
         $page = $filters['page'] ?? 1;
         $perPage = $filters['per_page'] ?? 15;
 
-        $orders = Cache::remember(
+        $orders = Cache::flexible(
             $this->listCacheKey($status, $page, $perPage),
-            now()->addSeconds(self::ORDERS_CACHE_TTL),
+            [self::ORDERS_CACHE_FRESH_SECONDS, self::ORDERS_CACHE_STALE_SECONDS],
             function () use ($status, $page, $perPage) {
                 $query = Order::query()
                     ->select(self::ORDER_COLUMNS)
