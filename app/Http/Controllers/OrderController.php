@@ -13,11 +13,49 @@ use App\Services\OrderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use OpenApi\Attributes as OA;
 
 class OrderController extends Controller
 {
+    /**
+     * Seconds an admin order page may be served from cache. Mutations rotate
+     * the list cache version, so this is a safety net, not the main freshness
+     * mechanism.
+     */
+    private const ORDERS_CACHE_TTL = 30;
+
+    /**
+     * Only the columns the resource actually reads — avoids fetching/transferring
+     * the whole row on every list request.
+     *
+     * @var list<string>
+     */
+    private const ORDER_COLUMNS = [
+        'id',
+        'order_number',
+        'customer_name',
+        'phone',
+        'wilaya',
+        'subtotal',
+        'shipping_fee',
+        'total',
+        'status',
+        'created_at',
+    ];
+
+    /**
+     * @var list<string>
+     */
+    private const ORDER_ITEM_COLUMNS = [
+        'id',
+        'order_id',
+        'product_id',
+        'product_name',
+        'unit_price',
+    ];
+
     public function __construct(private readonly OrderService $orderService) {}
 
     /**
@@ -118,15 +156,41 @@ class OrderController extends Controller
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $query = Order::query()->with('items');
+        $status = $filters['status'] ?? null;
+        $page = $filters['page'] ?? 1;
+        $perPage = $filters['per_page'] ?? 15;
 
-        if (isset($filters['status'])) {
-            $query->where('status', $filters['status']);
-        }
+        $orders = Cache::remember(
+            $this->listCacheKey($status, $page, $perPage),
+            now()->addSeconds(self::ORDERS_CACHE_TTL),
+            function () use ($status, $page, $perPage) {
+                $query = Order::query()
+                    ->select(self::ORDER_COLUMNS)
+                    ->with(['items' => fn ($items) => $items->select(self::ORDER_ITEM_COLUMNS)]);
 
-        return OrderResource::collection(
-            $query->orderByDesc('id')->paginate($filters['per_page'] ?? 15)->withQueryString()
+                if ($status !== null) {
+                    $query->where('status', $status);
+                }
+
+                return $query
+                    ->orderByDesc('id')
+                    ->paginate($perPage, ['*'], 'page', $page)
+                    ->withQueryString();
+            }
         );
+
+        return OrderResource::collection($orders);
+    }
+
+    /**
+     * Versioned cache key so a single `orders.list.version` rotation retires
+     * every cached page without having to enumerate their keys.
+     */
+    private function listCacheKey(?string $status, int $page, int $perPage): string
+    {
+        $version = Cache::get(Order::LIST_CACHE_VERSION_KEY, 1);
+
+        return sprintf('admin.orders.%s.%s.%d.%d', $version, $status ?? 'all', $page, $perPage);
     }
 
     /**
