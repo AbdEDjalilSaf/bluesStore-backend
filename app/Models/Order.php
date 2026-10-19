@@ -68,7 +68,8 @@ class Order extends Model
      */
     public function items(): HasMany
     {
-        return $this->hasMany(OrderItem::class);
+        return $this->hasMany(OrderItem::class)
+            ->select(['id', 'order_id', 'product_id', 'product_name', 'unit_price']);
     }
 
     /**
@@ -76,7 +77,10 @@ class Order extends Model
      */
     public function statusHistories(): HasMany
     {
-        return $this->hasMany(OrderStatusHistory::class)->orderBy('changed_at')->orderBy('id');
+        return $this->hasMany(OrderStatusHistory::class)
+            ->orderBy('changed_at')
+            ->orderBy('id')
+            ->select(['id', 'order_id', 'status', 'changed_at']);
     }
 
     /**

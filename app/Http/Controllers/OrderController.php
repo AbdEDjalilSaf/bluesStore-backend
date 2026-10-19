@@ -124,17 +124,34 @@ class OrderController extends Controller
             'phone.regex' => 'The phone number must be a valid Algerian mobile number (e.g. 0550123456).',
         ]);
 
-        $order = Order::query()
-            ->where('order_number', $data['order_number'])
-            ->where('phone', $data['phone'])
-            ->with(['items', 'statusHistories'])
-            ->first();
+        $order = Cache::flexible(
+            $this->trackCacheKey($data['order_number'], $data['phone']),
+            [self::ORDERS_CACHE_FRESH_SECONDS, self::ORDERS_CACHE_STALE_SECONDS],
+            function () use ($data) {
+                return Order::query()
+                    ->where('order_number', $data['order_number'])
+                    ->where('phone', $data['phone'])
+                    ->with(['items', 'statusHistories'])
+                    ->first();
+            }
+        );
 
         if (! $order) {
             return response()->json(['message' => 'Order not found.'], 404);
         }
 
         return new OrderTrackingResource($order);
+    }
+
+    /**
+     * Cache key for order tracking. Rotates with the list version so
+     * order updates invalidate tracking caches too.
+     */
+    private function trackCacheKey(string $orderNumber, string $phone): string
+    {
+        $version = Cache::get(Order::LIST_CACHE_VERSION_KEY, 1);
+
+        return sprintf('orders.track.%s.%s.%s', $version, $orderNumber, $phone);
     }
 
     /**
@@ -218,11 +235,28 @@ class OrderController extends Controller
     )]
     public function show(int $id): OrderResource
     {
-        $order = Order::query()
-            ->with(['items', 'statusHistories'])
-            ->findOrFail($id);
+        $order = Cache::flexible(
+            $this->detailCacheKey($id),
+            [self::ORDERS_CACHE_FRESH_SECONDS, self::ORDERS_CACHE_STALE_SECONDS],
+            function () use ($id) {
+                return Order::query()
+                    ->with(['items', 'statusHistories'])
+                    ->findOrFail($id);
+            }
+        );
 
         return new OrderResource($order);
+    }
+
+    /**
+     * Cache key for a single order detail. Rotates with the list version
+     * so order updates invalidate detail caches too.
+     */
+    private function detailCacheKey(int $id): string
+    {
+        $version = Cache::get(Order::LIST_CACHE_VERSION_KEY, 1);
+
+        return sprintf('admin.orders.detail.%s.%d', $version, $id);
     }
 
     /**
