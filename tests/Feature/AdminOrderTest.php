@@ -52,6 +52,20 @@ class AdminOrderTest extends TestCase
         return Order::query()->latest('id')->firstOrFail();
     }
 
+    private function makeOrder(): Order
+    {
+        return Order::query()->create([
+            'order_number' => uniqid('BC-TEST-'),
+            'customer_name' => 'Karim Benali',
+            'phone' => '0550123456',
+            'wilaya' => 'Algiers',
+            'subtotal' => 1000,
+            'shipping_fee' => 0,
+            'total' => 1000,
+            'status' => OrderStatus::Pending,
+        ]);
+    }
+
     public function test_admin_endpoints_are_public(): void
     {
         $product = $this->makeProduct();
@@ -111,6 +125,40 @@ class AdminOrderTest extends TestCase
         $this->json('GET', '/api/admin/orders?status=archived', [], $this->adminHeaders)
             ->assertStatus(422)
             ->assertJsonValidationErrors('status');
+    }
+
+    public function test_index_paginates_across_multiple_pages_without_required_parameters(): void
+    {
+        $orders = collect(range(1, 30))->map(fn () => $this->makeOrder());
+
+        $this->json('GET', '/api/admin/orders', [], $this->adminHeaders)
+            ->assertStatus(200)
+            ->assertJsonCount(15, 'data')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('meta.total', 30)
+            ->assertJsonPath('meta.from', 1)
+            ->assertJsonPath('meta.to', 15)
+            ->assertJsonPath('data.0.id', $orders->last()->id)
+            ->assertJsonPath('data.14.id', $orders[15]->id)
+            ->assertJsonPath('links.next', fn ($next) => $next !== null);
+
+        $this->json('GET', '/api/admin/orders?page=2&per_page=15', [], $this->adminHeaders)
+            ->assertStatus(200)
+            ->assertJsonCount(15, 'data')
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('meta.from', 16)
+            ->assertJsonPath('meta.to', 30)
+            ->assertJsonPath('data.0.id', $orders[14]->id)
+            ->assertJsonPath('data.14.id', $orders->first()->id)
+            ->assertJsonPath('links.prev', fn ($prev) => $prev !== null)
+            ->assertJsonPath('links.next', null);
+
+        $this->json('GET', '/api/admin/orders?page=3&per_page=15', [], $this->adminHeaders)
+            ->assertStatus(200)
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.current_page', 3)
+            ->assertJsonPath('meta.total', 30);
     }
 
     public function test_index_serves_stale_data_while_refreshing_the_cache_in_the_background(): void
