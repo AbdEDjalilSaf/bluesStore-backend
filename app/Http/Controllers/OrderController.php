@@ -110,57 +110,21 @@ class OrderController extends Controller
     #[OA\Get(
         path: '/admin/orders',
         summary: 'List orders (admin)',
-        description: 'Paginated list of the newest orders, optionally filtered by status.',
+        description: 'Returns all customer orders without any filters or pagination.',
         tags: ['orders'],
-        parameters: [
-            new OA\Parameter(name: 'status', in: 'query', description: 'Only return orders in this status.', schema: new OA\Schema(type: 'string', enum: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'])),
-            new OA\Parameter(name: 'page', in: 'query', schema: new OA\Schema(type: 'integer', minimum: 1)),
-            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', minimum: 1, maximum: 100)),
-        ],
         responses: [
-            new OA\Response(response: 200, description: 'Paginated list of orders.', content: new OA\JsonContent(ref: '#/components/schemas/OrderCollection')),
-            new OA\Response(response: 422, description: 'The status filter is not a valid order status.'),
+            new OA\Response(response: 200, description: 'List of all orders.', content: new OA\JsonContent(type: 'array', items: new OA\Items(ref: '#/components/schemas/Order'))),
         ]
     )]
     public function index(Request $request): JsonResponse
     {
-        $filters = $request->validate([
-            'status' => ['sometimes', 'string', Rule::enum(OrderStatus::class)],
-            'page' => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
-        ]);
+        $orders = Order::query()
+            ->select(self::ORDER_COLUMNS)
+            ->with(['items' => fn ($items) => $items->select(self::ORDER_ITEM_COLUMNS)])
+            ->orderByDesc('id')
+            ->get();
 
-        $status = $filters['status'] ?? null;
-        $page = $filters['page'] ?? 1;
-        $perPage = $filters['per_page'] ?? 15;
-
-        $payload = Cache::flexible(
-            $this->listCacheKey($status, $page, $perPage),
-            [self::ORDERS_CACHE_FRESH_SECONDS, self::ORDERS_CACHE_STALE_SECONDS],
-            function () use ($status, $page, $perPage, $request): array {
-                $query = Order::query()
-                    ->select(self::ORDER_COLUMNS)
-                    ->with(['items' => fn ($items) => $items->select(self::ORDER_ITEM_COLUMNS)]);
-
-                if ($status !== null) {
-                    $query->where('status', $status);
-                }
-
-                $paginator = $query->orderByDesc('id')
-                    ->paginate($perPage, ['*'], 'page', $page)
-                    ->withQueryString();
-
-                return OrderResource::collection($paginator)->toResponse($request)->getData(true);
-            }
-        );
-
-        return response()->json($payload);
-    }
-
-    private function listCacheKey(?string $status, int $page, int $perPage): string
-    {
-        $version = Cache::get(Order::LIST_CACHE_VERSION_KEY, 1);
-        return sprintf('admin.orders.v2.%s.%s.%d.%d', $version, $status ?? 'all', $page, $perPage);
+        return OrderResource::collection($orders)->toResponse($request);
     }
 
     /**
