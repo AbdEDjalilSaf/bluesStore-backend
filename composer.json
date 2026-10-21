@@ -10,6 +10,7 @@
         "cloudinary/cloudinary_php": "^1.20",
         "darkaonline/l5-swagger": "^11.1",
         "dedoc/scramble": "^0.13.47",
+        "google/apiclient": "*",
         "laravel/framework": "^13.17",
         "laravel/tinker": "^3.0"
     },

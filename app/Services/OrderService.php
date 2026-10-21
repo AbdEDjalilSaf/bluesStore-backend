@@ -9,10 +9,15 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\Wilaya;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class OrderService
 {
+    public function __construct(
+        private readonly GoogleSheetsService $googleSheetsService
+    ) {}
+
     /**
      * Place an order inside a transaction, locking product rows so that
      * concurrent orders cannot oversell the last piece.
@@ -87,6 +92,8 @@ class OrderService
 
             $order->items()->createMany($orderItems);
 
+            $this->syncToGoogleSheets($order);
+
             return $order;
         });
     }
@@ -127,5 +134,35 @@ class OrderService
         } while (Order::query()->where('order_number', $number)->exists());
 
         return $number;
+    }
+
+    /**
+     * Sync order data to Google Sheets.
+     */
+    private function syncToGoogleSheets(Order $order): void
+    {
+        try {
+            $itemsSummary = $order->items->map(fn ($item) => "{$item->product_name} ({$item->unit_price} DA)")->join(', ');
+
+            $orderData = [
+                'order_number' => $order->order_number,
+                'customer_name' => $order->customer_name,
+                'phone' => $order->phone,
+                'wilaya' => $order->wilaya,
+                'subtotal' => $order->subtotal,
+                'shipping_fee' => $order->shipping_fee,
+                'total' => $order->total,
+                'status' => $order->status->value,
+                'items_summary' => $itemsSummary,
+                'created_at' => $order->created_at->toDateTimeString(),
+            ];
+
+            $this->googleSheetsService->appendOrder($orderData);
+        } catch (\Exception $e) {
+            Log::error('Failed to sync order to Google Sheets', [
+                'error' => $e->getMessage(),
+                'order_id' => $order->id,
+            ]);
+        }
     }
 }
