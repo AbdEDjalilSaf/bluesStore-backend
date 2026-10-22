@@ -8,6 +8,7 @@ use App\Exceptions\ProductUnavailableException;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Wilaya;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -122,6 +123,28 @@ class OrderService
             $order->update(['status' => OrderStatus::Cancelled]);
 
             return $order;
+        });
+    }
+
+    /**
+     * Permanently delete an order.
+     * Stock is NOT restored. Use cancel() instead if you need to restore stock.
+     *
+     * @throws ModelNotFoundException
+     * @throws \RuntimeException
+     */
+    public function delete(int $id): void
+    {
+        DB::transaction(function () use ($id) {
+            $order = Order::query()
+                ->lockForUpdate()
+                ->findOrFail($id);
+
+            if ($order->status === OrderStatus::Shipped || $order->status === OrderStatus::Delivered) {
+                throw new \RuntimeException('Cannot delete orders that are shipped or delivered.');
+            }
+
+            $order->delete();
         });
     }
 

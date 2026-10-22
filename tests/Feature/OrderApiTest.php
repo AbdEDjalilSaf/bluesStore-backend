@@ -56,6 +56,26 @@ class OrderApiTest extends TestCase
         $this->assertSame(2, $order->items()->count());
     }
 
+    public function test_order_can_be_created_when_google_sheets_credentials_are_missing(): void
+    {
+        config([
+            'google.credentials_json' => null,
+            'google.credentials_path' => storage_path('app/missing-google-credentials.json'),
+            'google.spreadsheet_id' => 'test-spreadsheet-id',
+        ]);
+
+        $wilaya = Wilaya::factory()->create(['shipping_fee' => 500]);
+        $product = Product::factory()->create(['price' => 1000, 'stock' => 2]);
+
+        $this->postJson('/api/orders', $this->makeOrder(
+            [['product_id' => $product->id]],
+            ['wilaya_id' => $wilaya->id]
+        ))->assertStatus(201);
+
+        $this->assertSame(1, Order::count());
+        $this->assertSame(1, $product->fresh()->stock);
+    }
+
     public function test_order_above_available_stock_is_rejected(): void
     {
         $wilaya = Wilaya::factory()->create(['shipping_fee' => 500]);

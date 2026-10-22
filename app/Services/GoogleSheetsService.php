@@ -9,20 +9,41 @@ use Illuminate\Support\Facades\Log;
 
 class GoogleSheetsService
 {
-    private Client $client;
+    private ?Sheets $service = null;
 
-    private Sheets $service;
-
-    private string $spreadsheetId;
+    private string $spreadsheetId = '';
 
     public function __construct()
     {
-        $this->client = new Client;
-        $this->client->setApplicationName(config('google.app_name', 'Laravel Order System'));
-        $this->client->setScopes([Sheets::SPREADSHEETS]);
-        $this->client->setAuthConfig(config('google.credentials_path'));
-        $this->service = new Sheets($this->client);
-        $this->spreadsheetId = config('google.spreadsheet_id');
+        $this->spreadsheetId = (string) (config('google.spreadsheet_id') ?? '');
+        $credentialsJson = config('google.credentials_json');
+        $credentialsPath = config('google.credentials_path');
+
+        if (is_string($credentialsJson) && trim($credentialsJson) !== '') {
+            $credentials = json_decode($credentialsJson, true);
+
+            if (! is_array($credentials) || json_last_error() !== JSON_ERROR_NONE) {
+                Log::warning('Google Sheets credentials JSON is invalid.');
+
+                return;
+            }
+        } elseif (is_string($credentialsPath) && is_file($credentialsPath)) {
+            $credentials = $credentialsPath;
+        } else {
+            return;
+        }
+
+        try {
+            $client = new Client;
+            $client->setApplicationName(config('google.app_name', 'Laravel Order System'));
+            $client->setScopes([Sheets::SPREADSHEETS]);
+            $client->setAuthConfig($credentials);
+            $this->service = new Sheets($client);
+        } catch (\Throwable $exception) {
+            Log::error('Google Sheets client could not be initialized.', [
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -32,6 +53,12 @@ class GoogleSheetsService
      */
     public function appendOrder(array $orderData): bool
     {
+        $service = $this->configuredService();
+
+        if ($service === null) {
+            return false;
+        }
+
         try {
             $values = [
                 [
@@ -52,7 +79,7 @@ class GoogleSheetsService
                 'values' => $values,
             ]);
 
-            $this->service->spreadsheets_values->append(
+            $service->spreadsheets_values->append(
                 $this->spreadsheetId,
                 config('google.sheet_range', 'Orders!A:J'),
                 $body,
@@ -62,9 +89,9 @@ class GoogleSheetsService
             Log::info('Order synced to Google Sheets', ['order_number' => $orderData['order_number']]);
 
             return true;
-        } catch (\Exception $e) {
+        } catch (\Throwable $exception) {
             Log::error('Failed to sync order to Google Sheets', [
-                'error' => $e->getMessage(),
+                'error' => $exception->getMessage(),
                 'order_number' => $orderData['order_number'] ?? null,
             ]);
 
@@ -77,6 +104,12 @@ class GoogleSheetsService
      */
     public function setupSheet(): bool
     {
+        $service = $this->configuredService();
+
+        if ($service === null) {
+            return false;
+        }
+
         try {
             $headers = [
                 ['Order Number', 'Customer Name', 'Phone', 'Wilaya', 'Subtotal', 'Shipping Fee', 'Total', 'Status', 'Items', 'Created At'],
@@ -86,7 +119,7 @@ class GoogleSheetsService
                 'values' => $headers,
             ]);
 
-            $this->service->spreadsheets_values->update(
+            $service->spreadsheets_values->update(
                 $this->spreadsheetId,
                 config('google.sheet_range', 'Orders!A1:J1'),
                 $body,
@@ -94,10 +127,21 @@ class GoogleSheetsService
             );
 
             return true;
-        } catch (\Exception $e) {
-            Log::error('Failed to setup Google Sheet', ['error' => $e->getMessage()]);
+        } catch (\Throwable $exception) {
+            Log::error('Failed to setup Google Sheet', ['error' => $exception->getMessage()]);
 
             return false;
         }
+    }
+
+    private function configuredService(): ?Sheets
+    {
+        if ($this->service !== null && $this->spreadsheetId !== '') {
+            return $this->service;
+        }
+
+        Log::warning('Google Sheets sync skipped because credentials or spreadsheet ID are not configured.');
+
+        return null;
     }
 }

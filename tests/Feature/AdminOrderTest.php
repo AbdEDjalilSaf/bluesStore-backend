@@ -5,9 +5,8 @@ namespace Tests\Feature;
 use App\Enums\OrderStatus;
 use App\Models\Order;
 use App\Models\Product;
-use App\Models\Wilaya;i
+use App\Models\Wilaya;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class AdminOrderTest extends TestCase
@@ -253,5 +252,49 @@ class AdminOrderTest extends TestCase
 
         $this->assertSame(OrderStatus::Shipped, $shippedOrder->fresh()->status);
         $this->assertSame(3, $product->fresh()->stock);
+    }
+
+    public function test_deleting_pending_and_cancelled_orders(): void
+    {
+        $product = $this->makeProduct();
+        $pendingOrder = $this->placeOrder($product);
+
+        $this->json('DELETE', "/api/admin/orders/{$pendingOrder->id}", [], $this->adminHeaders)
+            ->assertStatus(204);
+
+        $this->assertDatabaseMissing('orders', ['id' => $pendingOrder->id]);
+        $this->assertDatabaseMissing('order_items', ['order_id' => $pendingOrder->id]);
+
+        $cancelledOrder = $this->placeOrder($product);
+        $cancelledOrder->update(['status' => OrderStatus::Cancelled]);
+
+        $this->json('DELETE', "/api/admin/orders/{$cancelledOrder->id}", [], $this->adminHeaders)
+            ->assertStatus(204);
+
+        $this->assertDatabaseMissing('orders', ['id' => $cancelledOrder->id]);
+    }
+
+    public function test_deleting_shipped_and_delivered_orders_is_blocked(): void
+    {
+        $product = $this->makeProduct();
+        $shippedOrder = $this->placeOrder($product);
+        $shippedOrder->update(['status' => OrderStatus::Shipped]);
+
+        $this->json('DELETE', "/api/admin/orders/{$shippedOrder->id}", [], $this->adminHeaders)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Cannot delete orders that are shipped or delivered.');
+
+        $deliveredOrder = $this->placeOrder($product);
+        $deliveredOrder->update(['status' => OrderStatus::Delivered]);
+
+        $this->json('DELETE', "/api/admin/orders/{$deliveredOrder->id}", [], $this->adminHeaders)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Cannot delete orders that are shipped or delivered.');
+    }
+
+    public function test_deleting_non_existent_order_returns_404(): void
+    {
+        $this->json('DELETE', '/api/admin/orders/999999', [], $this->adminHeaders)
+            ->assertStatus(404);
     }
 }

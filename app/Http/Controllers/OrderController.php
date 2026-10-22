@@ -10,6 +10,7 @@ use App\Http\Resources\OrderResource;
 use App\Http\Resources\OrderTrackingResource;
 use App\Models\Order;
 use App\Services\OrderService;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -19,6 +20,7 @@ use OpenApi\Attributes as OA;
 class OrderController extends Controller
 {
     private const ORDERS_CACHE_FRESH_SECONDS = 30;
+
     private const ORDERS_CACHE_STALE_SECONDS = 300;
 
     /** @var list<string> */
@@ -104,6 +106,7 @@ class OrderController extends Controller
     private function trackCacheKey(string $orderNumber, string $phone): string
     {
         $version = Cache::get(Order::LIST_CACHE_VERSION_KEY, 1);
+
         return sprintf('orders.v2.track.%s.%s.%s', $version, $orderNumber, $phone);
     }
 
@@ -148,6 +151,7 @@ class OrderController extends Controller
             [self::ORDERS_CACHE_FRESH_SECONDS, self::ORDERS_CACHE_STALE_SECONDS],
             function () use ($request, $id): array {
                 $order = Order::query()->with(['items', 'statusHistories'])->findOrFail($id);
+
                 return (new OrderResource($order))->toResponse($request)->getData(true);
             }
         );
@@ -158,6 +162,7 @@ class OrderController extends Controller
     private function detailCacheKey(int $id): string
     {
         $version = Cache::get(Order::LIST_CACHE_VERSION_KEY, 1);
+
         return sprintf('admin.orders.v2.detail.%s.%d', $version, $id);
     }
 
@@ -198,5 +203,30 @@ class OrderController extends Controller
         }
 
         return new OrderResource($order->load(['items', 'statusHistories']));
+    }
+
+    #[OA\Delete(
+        path: '/admin/orders/{id}',
+        summary: 'Delete an order (admin)',
+        description: 'Permanently deletes an order and all its related data (items, status history). Stock is NOT restored. Use cancellation instead if you need to restore stock.',
+        tags: ['orders'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
+        responses: [
+            new OA\Response(response: 204, description: 'Order deleted successfully.'),
+            new OA\Response(response: 404, description: 'Order not found.'),
+            new OA\Response(response: 422, description: 'Cannot delete orders that are shipped or delivered.'),
+        ]
+    )]
+    public function destroy(int $id): JsonResponse
+    {
+        try {
+            $this->orderService->delete($id);
+
+            return response()->json(null, 204);
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['message' => 'Order not found.'], 404);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
     }
 }
