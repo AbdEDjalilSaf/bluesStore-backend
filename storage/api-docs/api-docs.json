@@ -421,6 +421,82 @@
                 }
             }
         },
+        "/admin/orders/{id}/ship": {
+            "patch": {
+                "tags": [
+                    "orders"
+                ],
+                "summary": "Mark order as shipped (admin)",
+                "description": "Changes order status from confirmed to shipped.",
+                "operationId": "9c7640c93213478c2a2b76de0b28c8d6",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Order shipped successfully.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Order"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Order not found."
+                    },
+                    "422": {
+                        "description": "Only confirmed orders can be shipped."
+                    }
+                }
+            }
+        },
+        "/admin/orders/{id}/deliver": {
+            "patch": {
+                "tags": [
+                    "orders"
+                ],
+                "summary": "Mark order as delivered (admin)",
+                "description": "Changes order status from shipped to delivered.",
+                "operationId": "f02bb9714ac914a1ee4800c550bc7167",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Order delivered successfully.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Order"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Order not found."
+                    },
+                    "422": {
+                        "description": "Only shipped orders can be delivered."
+                    }
+                }
+            }
+        },
         "/products": {
             "get": {
                 "tags": [

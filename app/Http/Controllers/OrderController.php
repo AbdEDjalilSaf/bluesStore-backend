@@ -229,4 +229,54 @@ class OrderController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
     }
+
+    #[OA\Patch(
+        path: '/admin/orders/{id}/ship',
+        summary: 'Mark order as shipped (admin)',
+        description: 'Changes order status from confirmed to shipped.',
+        tags: ['orders'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Order shipped successfully.', content: new OA\JsonContent(ref: '#/components/schemas/Order')),
+            new OA\Response(response: 404, description: 'Order not found.'),
+            new OA\Response(response: 422, description: 'Only confirmed orders can be shipped.'),
+        ]
+    )]
+    public function ship(int $id): OrderResource|JsonResponse
+    {
+        try {
+            $order = $this->orderService->ship($id);
+
+            return new OrderResource($order->load(['items', 'statusHistories']));
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['message' => 'Order not found.'], 404);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    #[OA\Patch(
+        path: '/admin/orders/{id}/deliver',
+        summary: 'Mark order as delivered (admin)',
+        description: 'Changes order status from shipped to delivered.',
+        tags: ['orders'],
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
+        responses: [
+            new OA\Response(response: 200, description: 'Order delivered successfully.', content: new OA\JsonContent(ref: '#/components/schemas/Order')),
+            new OA\Response(response: 404, description: 'Order not found.'),
+            new OA\Response(response: 422, description: 'Only shipped orders can be delivered.'),
+        ]
+    )]
+    public function deliver(int $id): OrderResource|JsonResponse
+    {
+        try {
+            $order = $this->orderService->deliver($id);
+
+            return new OrderResource($order->load(['items', 'statusHistories']));
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['message' => 'Order not found.'], 404);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
 }

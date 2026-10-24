@@ -127,6 +127,52 @@ class OrderService
     }
 
     /**
+     * Mark an order as shipped (confirmed → shipped).
+     *
+     * @throws ModelNotFoundException
+     * @throws \RuntimeException
+     */
+    public function ship(int $id): Order
+    {
+        return DB::transaction(function () use ($id) {
+            $order = Order::query()
+                ->lockForUpdate()
+                ->findOrFail($id);
+
+            if ($order->status !== OrderStatus::Confirmed) {
+                throw new \RuntimeException('Only confirmed orders can be shipped.');
+            }
+
+            $order->update(['status' => OrderStatus::Shipped]);
+
+            return $order;
+        });
+    }
+
+    /**
+     * Mark an order as delivered (shipped → delivered).
+     *
+     * @throws ModelNotFoundException
+     * @throws \RuntimeException
+     */
+    public function deliver(int $id): Order
+    {
+        return DB::transaction(function () use ($id) {
+            $order = Order::query()
+                ->lockForUpdate()
+                ->findOrFail($id);
+
+            if ($order->status !== OrderStatus::Shipped) {
+                throw new \RuntimeException('Only shipped orders can be delivered.');
+            }
+
+            $order->update(['status' => OrderStatus::Delivered]);
+
+            return $order;
+        });
+    }
+
+    /**
      * Permanently delete an order.
      * Stock is NOT restored. Use cancel() instead if you need to restore stock.
      *

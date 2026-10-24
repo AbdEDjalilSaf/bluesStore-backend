@@ -297,4 +297,74 @@ class AdminOrderTest extends TestCase
         $this->json('DELETE', '/api/admin/orders/999999', [], $this->adminHeaders)
             ->assertStatus(404);
     }
+
+    public function test_shipping_confirmed_order(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->placeOrder($product);
+        $order->update(['status' => OrderStatus::Confirmed]);
+
+        $this->json('PATCH', "/api/admin/orders/{$order->id}/ship", [], $this->adminHeaders)
+            ->assertStatus(200)
+            ->assertJsonPath('data.status', 'shipped');
+
+        $this->assertSame(OrderStatus::Shipped, $order->fresh()->status);
+    }
+
+    public function test_shipping_only_confirmed_orders(): void
+    {
+        $product = $this->makeProduct();
+        $pendingOrder = $this->placeOrder($product);
+
+        $this->json('PATCH', "/api/admin/orders/{$pendingOrder->id}/ship", [], $this->adminHeaders)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Only confirmed orders can be shipped.');
+
+        $shippedOrder = $this->placeOrder($product);
+        $shippedOrder->update(['status' => OrderStatus::Shipped]);
+
+        $this->json('PATCH', "/api/admin/orders/{$shippedOrder->id}/ship", [], $this->adminHeaders)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Only confirmed orders can be shipped.');
+    }
+
+    public function test_delivering_shipped_order(): void
+    {
+        $product = $this->makeProduct();
+        $order = $this->placeOrder($product);
+        $order->update(['status' => OrderStatus::Shipped]);
+
+        $this->json('PATCH', "/api/admin/orders/{$order->id}/deliver", [], $this->adminHeaders)
+            ->assertStatus(200)
+            ->assertJsonPath('data.status', 'delivered');
+
+        $this->assertSame(OrderStatus::Delivered, $order->fresh()->status);
+    }
+
+    public function test_delivering_only_shipped_orders(): void
+    {
+        $product = $this->makeProduct();
+        $confirmedOrder = $this->placeOrder($product);
+        $confirmedOrder->update(['status' => OrderStatus::Confirmed]);
+
+        $this->json('PATCH', "/api/admin/orders/{$confirmedOrder->id}/deliver", [], $this->adminHeaders)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Only shipped orders can be delivered.');
+
+        $deliveredOrder = $this->placeOrder($product);
+        $deliveredOrder->update(['status' => OrderStatus::Delivered]);
+
+        $this->json('PATCH', "/api/admin/orders/{$deliveredOrder->id}/deliver", [], $this->adminHeaders)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Only shipped orders can be delivered.');
+    }
+
+    public function test_ship_and_deliver_non_existent_order_returns_404(): void
+    {
+        $this->json('PATCH', '/api/admin/orders/999999/ship', [], $this->adminHeaders)
+            ->assertStatus(404);
+
+        $this->json('PATCH', '/api/admin/orders/999999/deliver', [], $this->adminHeaders)
+            ->assertStatus(404);
+    }
 }

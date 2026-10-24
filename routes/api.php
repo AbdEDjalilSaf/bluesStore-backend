@@ -25,5 +25,7 @@ Route::prefix('admin')->group(function (): void {
     Route::get('/orders', [OrderController::class, 'index']);
     Route::get('/orders/{id}', [OrderController::class, 'show']);
     Route::patch('/orders/{id}/status', [OrderController::class, 'updateStatus']);
+    Route::patch('/orders/{id}/ship', [OrderController::class, 'ship']);
+    Route::patch('/orders/{id}/deliver', [OrderController::class, 'deliver']);
     Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
 });
