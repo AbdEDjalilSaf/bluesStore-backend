@@ -26,6 +26,6 @@ Route::prefix('admin')->group(function (): void {
     Route::get('/orders/{id}', [OrderController::class, 'show']);
     Route::patch('/orders/{id}/status', [OrderController::class, 'updateStatus']);
     Route::match(['post', 'patch'], '/orders/{id}/ship', [OrderController::class, 'ship']);
-    Route::patch('/orders/{id}/deliver', [OrderController::class, 'deliver']);
+    Route::match(['post', 'patch'], '/orders/{id}/deliver', [OrderController::class, 'deliver']);
     Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
 });
