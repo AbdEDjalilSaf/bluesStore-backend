@@ -91,6 +91,23 @@ class ProductApiTest extends TestCase
             ->assertJsonStructure(['data' => ['images']]);
     }
 
+    public function test_index_returns_absolute_urls_for_product_images(): void
+    {
+        config(['filesystems.disks.public.url' => 'https://api.example.test/storage']);
+
+        $product = Product::factory()->create();
+        $product->images()->create([
+            'path' => 'products/front.png',
+            'sort_order' => 0,
+            'is_primary' => true,
+        ]);
+
+        $this->getJson('/api/products')
+            ->assertOk()
+            ->assertJsonPath('data.0.images.0.path', 'products/front.png')
+            ->assertJsonPath('data.0.images.0.url', 'https://api.example.test/storage/products/front.png');
+    }
+
     public function test_show_returns_404_for_unknown_or_inactive_slug(): void
     {
         $this->getJson('/api/products/does-not-exist')->assertNotFound();
