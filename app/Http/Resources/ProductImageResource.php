@@ -28,7 +28,7 @@ class ProductImageResource extends JsonResource
         return [
             'id' => $this->id,
             'path' => $this->path,
-            'url' => Storage::disk('public')->url($this->path),
+            'url' => Storage::disk(config('filesystems.product_images_disk', env('PRODUCT_IMAGES_DISK', 'r2')))->url($this->path),
             'sort_order' => $this->sort_order,
             'is_primary' => $this->is_primary,
         ];

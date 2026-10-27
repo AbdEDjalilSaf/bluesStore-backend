@@ -17,6 +17,11 @@ use Throwable;
 
 class ProductController extends Controller
 {
+    private function imageDisk(): string
+    {
+        return (string) config('filesystems.product_images_disk', env('PRODUCT_IMAGES_DISK', 'r2'));
+    }
+
     /**
      * List all active shirts without pagination or filters.
      */
@@ -81,7 +86,7 @@ class ProductController extends Controller
                 return $product;
             });
         } catch (Throwable $exception) {
-            Storage::disk('public')->delete($storedPaths);
+            Storage::disk($this->imageDisk())->delete($storedPaths);
 
             throw $exception;
         }
@@ -160,7 +165,7 @@ class ProductController extends Controller
                 $this->storeImages($product, $files, $storedPaths);
             });
         } catch (Throwable $exception) {
-            Storage::disk('public')->delete($storedPaths);
+            Storage::disk($this->imageDisk())->delete($storedPaths);
 
             throw $exception;
         }
@@ -191,13 +196,13 @@ class ProductController extends Controller
 
         $product->delete();
 
-        Storage::disk('public')->delete($paths);
+        Storage::disk($this->imageDisk())->delete($paths);
 
         return response()->json(null, 204);
     }
 
     /**
-     * Store the uploaded images on the public disk and create their rows.
+     * Store the uploaded images on the configured image disk and create their rows.
      *
      * @param  array<int, UploadedFile>  $files
      * @param  array<int, string>  $storedPaths
@@ -213,7 +218,7 @@ class ProductController extends Controller
         $hasPrimary = $product->images()->where('is_primary', true)->exists();
 
         foreach (array_values($files) as $index => $file) {
-            $path = $file->store('products', 'public');
+            $path = $file->store('products', $this->imageDisk());
 
             if ($path === false) {
                 throw new RuntimeException('Unable to store the product image.');

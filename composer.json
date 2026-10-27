@@ -7,7 +7,6 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "cloudinary/cloudinary_php": "^1.20",
         "darkaonline/l5-swagger": "^11.1",
         "dedoc/scramble": "^0.13.47",
         "google/apiclient": "*",
