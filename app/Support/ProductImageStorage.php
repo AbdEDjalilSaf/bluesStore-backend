@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Cloudinary\Cloudinary;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -31,9 +32,13 @@ class ProductImageStorage
             throw new RuntimeException('Unsupported product image storage driver.');
         }
 
-        self::configureCloudinary();
+        $realPath = $file->getRealPath();
 
-        $result = \Cloudinary\Uploader::upload($file->getRealPath(), [
+        if ($realPath === false) {
+            throw new RuntimeException('Unable to read the uploaded product image.');
+        }
+
+        $result = self::cloudinary()->uploadApi()->upload($realPath, [
             'folder' => 'bluesstore/products',
             'resource_type' => 'image',
             'overwrite' => false,
@@ -51,16 +56,10 @@ class ProductImageStorage
     public static function url(string $path, Request $request): string
     {
         if (str_starts_with($path, self::CLOUDINARY_PREFIX)) {
-            self::configureCloudinary();
+            $publicId = substr($path, strlen(self::CLOUDINARY_PREFIX));
 
-            return (string) \cloudinary_url(substr($path, strlen(self::CLOUDINARY_PREFIX)), [
-                'secure' => true,
-                'resource_type' => 'image',
-                'force_version' => false,
-            ]);
+            return (string) self::cloudinary()->image($publicId)->toUrl();
         }
-
-        $url = Storage::disk('public')->url($path);
 
         if (config('filesystems.disks.public.driver') === 'local') {
             $encodedPath = implode('/', array_map('rawurlencode', explode('/', ltrim($path, '/'))));
@@ -68,11 +67,11 @@ class ProductImageStorage
             return $request->getSchemeAndHttpHost().'/storage/'.$encodedPath;
         }
 
-        return $url;
+        return Storage::disk('public')->url($path);
     }
 
     /**
-     * Remove uploaded files without hiding the original database/upload failure.
+     * Remove stored files without hiding the original database/upload failure.
      * Cloudinary and local paths can coexist while old product images are migrated.
      *
      * @param  array<int, string>  $paths
@@ -82,8 +81,7 @@ class ProductImageStorage
         foreach ($paths as $path) {
             try {
                 if (str_starts_with($path, self::CLOUDINARY_PREFIX)) {
-                    self::configureCloudinary();
-                    \Cloudinary\Uploader::destroy(
+                    self::cloudinary()->uploadApi()->destroy(
                         substr($path, strlen(self::CLOUDINARY_PREFIX)),
                         ['resource_type' => 'image', 'invalidate' => true],
                     );
@@ -101,7 +99,7 @@ class ProductImageStorage
         }
     }
 
-    private static function configureCloudinary(): void
+    private static function cloudinary(): Cloudinary
     {
         $cloudinaryUrl = (string) config('services.cloudinary.url', '');
 
@@ -109,7 +107,6 @@ class ProductImageStorage
             throw new RuntimeException('CLOUDINARY_URL must be set when PRODUCT_IMAGES_DRIVER=cloudinary.');
         }
 
-        \Cloudinary::config_from_url($cloudinaryUrl);
-        \Cloudinary::config(['secure' => true]);
+        return new Cloudinary($cloudinaryUrl);
     }
 }
