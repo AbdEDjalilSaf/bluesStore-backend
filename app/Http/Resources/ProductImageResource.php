@@ -4,7 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
+use App\Support\ProductImageStorage;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(
@@ -28,7 +28,7 @@ class ProductImageResource extends JsonResource
         return [
             'id' => $this->id,
             'path' => $this->path,
-            'url' => Storage::disk('public')->url($this->path),
+            'url' => ProductImageStorage::url((string) $this->path, $request),
             'sort_order' => $this->sort_order,
             'is_primary' => $this->is_primary,
         ];

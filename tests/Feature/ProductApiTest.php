@@ -91,9 +91,9 @@ class ProductApiTest extends TestCase
             ->assertJsonStructure(['data' => ['images']]);
     }
 
-    public function test_index_returns_absolute_urls_for_product_images(): void
+    public function test_index_builds_local_image_urls_from_the_current_request_host(): void
     {
-        config(['filesystems.disks.public.url' => 'https://api.example.test/storage']);
+        config(['filesystems.disks.public.url' => 'https://old-api.example.test/storage']);
 
         $product = Product::factory()->create();
         $product->images()->create([
@@ -105,7 +105,31 @@ class ProductApiTest extends TestCase
         $this->getJson('/api/products')
             ->assertOk()
             ->assertJsonPath('data.0.images.0.path', 'products/front.png')
-            ->assertJsonPath('data.0.images.0.url', 'https://api.example.test/storage/products/front.png');
+            ->assertJsonPath('data.0.images.0.url', 'http://localhost/storage/products/front.png');
+    }
+
+    public function test_index_builds_secure_cloudinary_urls_for_cloudinary_image_paths(): void
+    {
+        config([
+            'filesystems.product_images_driver' => 'cloudinary',
+            'services.cloudinary.url' => 'cloudinary://test_key:test_secret@demo-cloud',
+        ]);
+
+        $product = Product::factory()->create();
+        $product->images()->create([
+            'path' => 'cloudinary:bluesstore/products/front',
+            'sort_order' => 0,
+            'is_primary' => true,
+        ]);
+
+        $url = $this->getJson('/api/products')
+            ->assertOk()
+            ->json('data.0.images.0.url');
+
+        $this->assertSame(
+            'https://res.cloudinary.com/demo-cloud/image/upload/bluesstore/products/front',
+            $url,
+        );
     }
 
     public function test_show_returns_404_for_unknown_or_inactive_slug(): void
@@ -335,7 +359,8 @@ class ProductApiTest extends TestCase
             'is_primary' => true,
         ]);
 
-        $this->patch('/api/products/'.$product->id, [
+        $this->post('/api/products/'.$product->id, [
+            '_method' => 'PATCH',
             'images' => [$this->imageUpload('added.png')],
         ])
             ->assertStatus(200)
@@ -351,6 +376,48 @@ class ProductApiTest extends TestCase
 
         Storage::disk('public')->assertExists($existingPath);
         Storage::disk('public')->assertExists($images[1]->path);
+    }
+
+    public function test_update_can_replace_the_existing_image_gallery(): void
+    {
+        Storage::fake('public');
+
+        $product = Product::factory()->create();
+        $existingPath = $this->imageUpload('old.png')->store('products', 'public');
+        $product->images()->create([
+            'path' => $existingPath,
+            'sort_order' => 0,
+            'is_primary' => true,
+        ]);
+
+        $response = $this->post('/api/products/'.$product->id, [
+            '_method' => 'PATCH',
+            'replace_images' => '1',
+            'images' => [$this->imageUpload('replacement.png')],
+        ])
+            ->assertOk()
+            ->assertJsonCount(1, 'data.images')
+            ->assertJsonPath('data.images.0.is_primary', true);
+
+        $replacementPath = $response->json('data.images.0.path');
+
+        $this->assertDatabaseMissing('product_images', ['path' => $existingPath]);
+        $this->assertDatabaseHas('product_images', ['path' => $replacementPath, 'is_primary' => true]);
+        Storage::disk('public')->assertMissing($existingPath);
+        Storage::disk('public')->assertExists($replacementPath);
+    }
+
+    public function test_replacing_images_requires_at_least_one_new_upload(): void
+    {
+        $product = Product::factory()->create();
+
+        $this->post('/api/products/'.$product->id, [
+            '_method' => 'PATCH',
+            'replace_images' => '1',
+            'name' => $product->name,
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['images']);
     }
 
     public function test_update_returns_404_for_unknown_key(): void

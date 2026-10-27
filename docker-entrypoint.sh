@@ -14,9 +14,10 @@ if [ "${DB_CONNECTION:-sqlite}" = "sqlite" ]; then
     touch "${DB_DATABASE:-database/database.sqlite}"
 fi
 
-# Expose the public disk (uploaded product images) under the web root so
-# image URLs actually resolve. Idempotent: ignore "link already exists".
-php artisan storage:link || true
+# Expose the public disk (uploaded product images) under the web root. Force
+# repairs a stale/broken symlink after deploy; do not hide failures, otherwise
+# the API starts successfully while every uploaded image returns 404.
+php artisan storage:link --force
 
 # Apply migrations and seed reference/demo data. The seeders use
 # firstOrCreate, so they are safe to run on every boot.

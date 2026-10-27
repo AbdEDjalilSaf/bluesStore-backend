@@ -22,10 +22,11 @@ use OpenApi\Attributes as OA;
         new OA\Property(property: 'size', type: 'string', maxLength: 255, nullable: true, description: 'Comma-separated list of available sizes.', example: 'S,M,L,XL'),
         new OA\Property(property: 'category_id', type: 'integer', nullable: true, description: 'Existing category id.', example: 1),
         new OA\Property(property: 'is_active', type: 'boolean'),
+        new OA\Property(property: 'replace_images', type: 'boolean', description: 'Replace the existing image gallery with the uploaded images.'),
         new OA\Property(
             property: 'images',
             type: 'array',
-            description: 'Additional image uploads, appended to the existing ones. Requires a multipart/form-data request.',
+            description: 'Image uploads appended by default, or used to replace the gallery when replace_images is true. Requires multipart/form-data.',
             items: new OA\Items(type: 'string', format: 'binary')
         ),
     ]
@@ -56,7 +57,8 @@ class UpdateProductRequest extends FormRequest
             'size' => ['sometimes', 'nullable', 'string', 'max:255'],
             'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')],
             'is_active' => ['sometimes', 'boolean'],
-            'images' => ['sometimes', 'array', 'max:8'],
+            'replace_images' => ['sometimes', 'boolean'],
+            'images' => ['required_if:replace_images,1', 'array', 'max:8'],
             'images.*' => ['image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
         ];
     }

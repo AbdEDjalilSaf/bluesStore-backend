@@ -6,13 +6,12 @@ use App\Http\Requests\StoreProductRequest;
 use App\Http\Requests\UpdateProductRequest;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
+use App\Support\ProductImageStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use OpenApi\Attributes as OA;
-use RuntimeException;
 use Throwable;
 
 class ProductController extends Controller
@@ -81,7 +80,7 @@ class ProductController extends Controller
                 return $product;
             });
         } catch (Throwable $exception) {
-            Storage::disk('public')->delete($storedPaths);
+            ProductImageStorage::delete($storedPaths);
 
             throw $exception;
         }
@@ -117,12 +116,12 @@ class ProductController extends Controller
     }
 
     /**
-     * Update a product's fields and append any uploaded images (admin).
+     * Update a product's fields and append or replace uploaded images (admin).
      */
     #[OA\Patch(
         path: '/products/{key}',
         summary: 'Update a product',
-        description: 'Update product fields by id or slug and append uploaded images (admin).',
+        description: 'Update product fields by id or slug. Uploaded images are appended by default; set replace_images to replace the gallery.',
         tags: ['products'],
         parameters: [
             new OA\Parameter(name: 'key', in: 'path', required: true, description: 'Product id or slug.', schema: new OA\Schema(type: 'string')),
@@ -149,21 +148,30 @@ class ProductController extends Controller
 
         $data = $request->validated();
         $files = $data['images'] ?? [];
-        unset($data['images']);
+        $replaceImages = filter_var($data['replace_images'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        unset($data['images'], $data['replace_images']);
 
         $storedPaths = [];
+        $pathsToDelete = [];
 
         try {
-            DB::transaction(function () use ($product, $data, $files, &$storedPaths) {
+            DB::transaction(function () use ($product, $data, $files, $replaceImages, &$storedPaths, &$pathsToDelete) {
                 $product->update($data);
+
+                if ($replaceImages) {
+                    $pathsToDelete = $product->images()->pluck('path')->all();
+                    $product->images()->delete();
+                }
 
                 $this->storeImages($product, $files, $storedPaths);
             });
         } catch (Throwable $exception) {
-            Storage::disk('public')->delete($storedPaths);
+            ProductImageStorage::delete($storedPaths);
 
             throw $exception;
         }
+
+        ProductImageStorage::delete($pathsToDelete);
 
         return new ProductResource($product->load(['images' => fn ($query) => $query->orderBy('sort_order')]));
     }
@@ -191,13 +199,13 @@ class ProductController extends Controller
 
         $product->delete();
 
-        Storage::disk('public')->delete($paths);
+        ProductImageStorage::delete($paths);
 
         return response()->json(null, 204);
     }
 
     /**
-     * Store the uploaded images on the public disk and create their rows.
+     * Store the uploaded images on the configured product image provider.
      *
      * @param  array<int, UploadedFile>  $files
      * @param  array<int, string>  $storedPaths
@@ -213,11 +221,7 @@ class ProductController extends Controller
         $hasPrimary = $product->images()->where('is_primary', true)->exists();
 
         foreach (array_values($files) as $index => $file) {
-            $path = $file->store('products', 'public');
-
-            if ($path === false) {
-                throw new RuntimeException('Unable to store the product image.');
-            }
+            $path = ProductImageStorage::store($file);
 
             $storedPaths[] = $path;
 
