@@ -15,7 +15,7 @@ return [
 
     'default' => env('FILESYSTEM_DISK', 'local'),
 
-    // Product images use local storage by default; set to "cloudinary" on Render Free.
+    // Product images use local storage by default; set to "appwrite" on Render Free.
     'product_images_driver' => env('PRODUCT_IMAGES_DRIVER', 'local'),
 
     /*

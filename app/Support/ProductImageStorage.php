@@ -5,33 +5,144 @@ namespace App\Support;
 use Cloudinary\Cloudinary;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
 class ProductImageStorage
 {
+    private const APPWRITE_PREFIX = 'appwrite:';
+
     private const CLOUDINARY_PREFIX = 'cloudinary:';
 
     public static function store(UploadedFile $file): string
     {
-        $driver = (string) config('filesystems.product_images_driver', 'local');
+        return match ((string) config('filesystems.product_images_driver', 'local')) {
+            'local' => self::storeLocal($file),
+            'appwrite' => self::storeAppwrite($file),
+            'cloudinary' => self::storeCloudinary($file),
+            default => throw new RuntimeException('Unsupported product image storage driver.'),
+        };
+    }
 
-        if ($driver === 'local') {
-            $path = $file->store('products', 'public');
+    public static function url(string $path, Request $request): string
+    {
+        if (str_starts_with($path, self::APPWRITE_PREFIX)) {
+            return self::appwriteUrl(substr($path, strlen(self::APPWRITE_PREFIX)));
+        }
 
-            if ($path === false) {
-                throw new RuntimeException('Unable to store the product image.');
+        if (str_starts_with($path, self::CLOUDINARY_PREFIX)) {
+            $publicId = substr($path, strlen(self::CLOUDINARY_PREFIX));
+
+            return (string) self::cloudinary()->image($publicId)->toUrl();
+        }
+
+        if (config('filesystems.disks.public.driver') === 'local') {
+            $encodedPath = implode('/', array_map('rawurlencode', explode('/', ltrim($path, '/'))));
+
+            return $request->getSchemeAndHttpHost().'/storage/'.$encodedPath;
+        }
+
+        return Storage::disk('public')->url($path);
+    }
+
+    /**
+     * Remove stored files without hiding the original database/upload failure.
+     * Appwrite, Cloudinary, and local paths can coexist while old images are migrated.
+     *
+     * @param  array<int, string>  $paths
+     */
+    public static function delete(array $paths): void
+    {
+        foreach ($paths as $path) {
+            try {
+                if (str_starts_with($path, self::APPWRITE_PREFIX)) {
+                    self::deleteAppwrite(substr($path, strlen(self::APPWRITE_PREFIX)));
+
+                    continue;
+                }
+
+                if (str_starts_with($path, self::CLOUDINARY_PREFIX)) {
+                    self::cloudinary()->uploadApi()->destroy(
+                        substr($path, strlen(self::CLOUDINARY_PREFIX)),
+                        ['resource_type' => 'image', 'invalidate' => true],
+                    );
+
+                    continue;
+                }
+
+                Storage::disk('public')->delete($path);
+            } catch (Throwable $exception) {
+                Log::warning('Unable to delete a product image asset.', [
+                    'path' => $path,
+                    'error' => $exception->getMessage(),
+                ]);
             }
+        }
+    }
 
-            return $path;
+    private static function storeLocal(UploadedFile $file): string
+    {
+        $path = $file->store('products', 'public');
+
+        if ($path === false) {
+            throw new RuntimeException('Unable to store the product image.');
         }
 
-        if ($driver !== 'cloudinary') {
-            throw new RuntimeException('Unsupported product image storage driver.');
+        return $path;
+    }
+
+    private static function storeAppwrite(UploadedFile $file): string
+    {
+        $config = self::appwriteConfig();
+        $realPath = $file->getRealPath();
+
+        if ($realPath === false) {
+            throw new RuntimeException('Unable to read the uploaded product image.');
         }
 
+        $stream = fopen($realPath, 'rb');
+
+        if ($stream === false) {
+            throw new RuntimeException('Unable to read the uploaded product image.');
+        }
+
+        $fileId = (string) Str::uuid();
+
+        try {
+            $response = Http::withHeaders(self::appwriteHeaders($config))
+                ->attach('file', $stream, $file->getClientOriginalName())
+                ->post(self::appwriteFilesUrl($config), [
+                    'fileId' => $fileId,
+                    'permissions' => ['read("any")'],
+                ]);
+        } finally {
+            fclose($stream);
+        }
+
+        if ($response->failed()) {
+            Log::error('Appwrite rejected a product image upload.', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            throw new RuntimeException('Unable to store the product image in Appwrite.');
+        }
+
+        $storedFileId = $response->json('$id');
+
+        if (! is_string($storedFileId) || $storedFileId === '') {
+            throw new RuntimeException('Appwrite did not return a file ID.');
+        }
+
+        return self::APPWRITE_PREFIX.$storedFileId;
+    }
+
+    private static function storeCloudinary(UploadedFile $file): string
+    {
         $realPath = $file->getRealPath();
 
         if ($realPath === false) {
@@ -53,50 +164,69 @@ class ProductImageStorage
         return self::CLOUDINARY_PREFIX.$publicId;
     }
 
-    public static function url(string $path, Request $request): string
+    private static function deleteAppwrite(string $fileId): void
     {
-        if (str_starts_with($path, self::CLOUDINARY_PREFIX)) {
-            $publicId = substr($path, strlen(self::CLOUDINARY_PREFIX));
+        $config = self::appwriteConfig();
 
-            return (string) self::cloudinary()->image($publicId)->toUrl();
+        $response = Http::withHeaders(self::appwriteHeaders($config))
+            ->delete(self::appwriteFilesUrl($config).'/'.rawurlencode($fileId));
+
+        if ($response->failed() && $response->status() !== 404) {
+            Log::warning('Appwrite rejected a product image deletion.', [
+                'file_id' => $fileId,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
         }
+    }
 
-        if (config('filesystems.disks.public.driver') === 'local') {
-            $encodedPath = implode('/', array_map('rawurlencode', explode('/', ltrim($path, '/'))));
+    private static function appwriteUrl(string $fileId): string
+    {
+        $config = self::appwriteConfig();
 
-            return $request->getSchemeAndHttpHost().'/storage/'.$encodedPath;
-        }
-
-        return Storage::disk('public')->url($path);
+        return self::appwriteFilesUrl($config)
+            .'/'.rawurlencode($fileId)
+            .'/view?project='.rawurlencode($config['project']);
     }
 
     /**
-     * Remove stored files without hiding the original database/upload failure.
-     * Cloudinary and local paths can coexist while old product images are migrated.
-     *
-     * @param  array<int, string>  $paths
+     * @param  array{endpoint: string, project: string, key: string, bucket: string}  $config
+     * @return array<string, string>
      */
-    public static function delete(array $paths): void
+    private static function appwriteHeaders(array $config): array
     {
-        foreach ($paths as $path) {
-            try {
-                if (str_starts_with($path, self::CLOUDINARY_PREFIX)) {
-                    self::cloudinary()->uploadApi()->destroy(
-                        substr($path, strlen(self::CLOUDINARY_PREFIX)),
-                        ['resource_type' => 'image', 'invalidate' => true],
-                    );
+        return [
+            'X-Appwrite-Project' => $config['project'],
+            'X-Appwrite-Key' => $config['key'],
+            'Accept' => 'application/json',
+        ];
+    }
 
-                    continue;
-                }
+    /**
+     * @param  array{endpoint: string, project: string, key: string, bucket: string}  $config
+     */
+    private static function appwriteFilesUrl(array $config): string
+    {
+        return $config['endpoint'].'/storage/buckets/'.rawurlencode($config['bucket']).'/files';
+    }
 
-                Storage::disk('public')->delete($path);
-            } catch (Throwable $exception) {
-                Log::warning('Unable to delete a product image asset.', [
-                    'path' => $path,
-                    'error' => $exception->getMessage(),
-                ]);
-            }
+    /**
+     * @return array{endpoint: string, project: string, key: string, bucket: string}
+     */
+    private static function appwriteConfig(): array
+    {
+        $config = [
+            'endpoint' => rtrim((string) config('services.appwrite.endpoint', ''), '/'),
+            'project' => (string) config('services.appwrite.project', ''),
+            'key' => (string) config('services.appwrite.key', ''),
+            'bucket' => (string) config('services.appwrite.bucket', ''),
+        ];
+
+        if (in_array('', $config, true)) {
+            throw new RuntimeException('APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY, and APPWRITE_PRODUCT_IMAGES_BUCKET_ID must be set when PRODUCT_IMAGES_DRIVER=appwrite.');
         }
+
+        return $config;
     }
 
     private static function cloudinary(): Cloudinary

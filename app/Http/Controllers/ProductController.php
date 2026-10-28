@@ -46,7 +46,7 @@ class ProductController extends Controller
     #[OA\Post(
         path: '/products',
         summary: 'Create a product',
-        description: 'Create a product and, when images are sent, store them on the public disk and create their rows in the same transaction (admin).',
+        description: 'Create a product and, when images are sent, store them on the configured product image provider and create their rows in the same transaction (admin).',
         tags: ['products'],
         requestBody: new OA\RequestBody(
             required: true,
