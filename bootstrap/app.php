@@ -4,7 +4,9 @@ use App\Http\Middleware\EnsureAdminToken;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -25,4 +27,21 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        $exceptions->render(function (RuntimeException $exception, Request $request) {
+            if (
+                str_contains($exception->getMessage(), 'APPWRITE_ENDPOINT')
+                && str_contains($exception->getMessage(), 'APPWRITE_PROJECT_ID')
+                && str_contains($exception->getMessage(), 'APPWRITE_API_KEY')
+                && str_contains($exception->getMessage(), 'APPWRITE_DATABASE_ID')
+            ) {
+                if ($request->is('api/*') || $request->expectsJson()) {
+                    return response()->json([
+                        'message' => 'Service temporarily unavailable.',
+                    ], 503);
+                }
+            }
+
+            return null;
+        });
     })->create();
