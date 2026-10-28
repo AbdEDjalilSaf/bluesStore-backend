@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -14,6 +16,16 @@ class ProductApiTest extends TestCase
     use RefreshDatabase;
 
     private const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config([
+            'app.url' => 'http://localhost',
+            'filesystems.product_images_driver' => 'local',
+        ]);
+    }
 
     public function test_index_returns_all_active_shirts_without_pagination(): void
     {
@@ -91,9 +103,9 @@ class ProductApiTest extends TestCase
             ->assertJsonStructure(['data' => ['images']]);
     }
 
-    public function test_index_returns_absolute_urls_for_product_images(): void
+    public function test_index_builds_local_image_urls_from_the_current_request_host(): void
     {
-        config(['filesystems.disks.public.url' => 'https://api.example.test/storage']);
+        config(['filesystems.disks.public.url' => 'https://old-api.example.test/storage']);
 
         $product = Product::factory()->create();
         $product->images()->create([
@@ -102,10 +114,124 @@ class ProductApiTest extends TestCase
             'is_primary' => true,
         ]);
 
-        $this->getJson('/api/products')
+        $this->getJson('http://localhost/api/products')
             ->assertOk()
             ->assertJsonPath('data.0.images.0.path', 'products/front.png')
-            ->assertJsonPath('data.0.images.0.url', 'https://api.example.test/storage/products/front.png');
+            ->assertJsonPath('data.0.images.0.url', 'http://localhost/storage/products/front.png');
+    }
+
+    public function test_index_builds_secure_cloudinary_urls_for_cloudinary_image_paths(): void
+    {
+        config([
+            'filesystems.product_images_driver' => 'cloudinary',
+            'services.cloudinary.url' => 'cloudinary://test_key:test_secret@demo-cloud',
+        ]);
+
+        $product = Product::factory()->create();
+        $product->images()->create([
+            'path' => 'cloudinary:bluesstore/products/front',
+            'sort_order' => 0,
+            'is_primary' => true,
+        ]);
+
+        $url = $this->getJson('/api/products')
+            ->assertOk()
+            ->json('data.0.images.0.url');
+
+        $this->assertStringContainsString(
+            'https://res.cloudinary.com/demo-cloud/image/upload',
+            $url,
+        );
+        $this->assertStringContainsString('bluesstore/products/front', $url);
+    }
+
+    public function test_index_builds_appwrite_file_view_urls(): void
+    {
+        $this->configureAppwrite();
+
+        $product = Product::factory()->create();
+        $product->images()->create([
+            'path' => 'appwrite:file-123',
+            'sort_order' => 0,
+            'is_primary' => true,
+        ]);
+
+        $this->getJson('/api/products')
+            ->assertOk()
+            ->assertJsonPath('data.0.images.0.path', 'appwrite:file-123')
+            ->assertJsonPath(
+                'data.0.images.0.url',
+                'https://appwrite.example.test/v1/storage/buckets/product-images/files/file-123/view?project=project-123',
+            );
+    }
+
+    public function test_store_uploads_images_to_appwrite_and_persists_paths(): void
+    {
+        $this->configureAppwrite();
+
+        Http::fake(function (ClientRequest $request) {
+            static $fileNumber = 0;
+            $fileNumber++;
+
+            return Http::response(['$id' => 'file-'.$fileNumber], 201);
+        });
+
+        $this->post('/api/products', $this->validProductPayload([
+            'images' => [$this->imageUpload('front.png'), $this->imageUpload('back.png')],
+        ]))
+            ->assertStatus(201)
+            ->assertJsonCount(2, 'data.images')
+            ->assertJsonPath('data.images.0.path', 'appwrite:file-1')
+            ->assertJsonPath('data.images.1.path', 'appwrite:file-2');
+
+        Http::assertSentCount(2);
+        Http::assertSent(function (ClientRequest $request): bool {
+            return $request->method() === 'POST'
+                && $request->url() === 'https://appwrite.example.test/v1/storage/buckets/product-images/files'
+                && $request->hasHeader('X-Appwrite-Project', 'project-123')
+                && $request->hasHeader('X-Appwrite-Key', 'api-key');
+        });
+    }
+
+    public function test_store_rolls_back_when_appwrite_upload_fails(): void
+    {
+        $this->configureAppwrite();
+
+        Http::fake([
+            'appwrite.example.test/*' => Http::response(['message' => 'Storage unavailable.'], 500),
+        ]);
+
+        $this->post('/api/products', $this->validProductPayload([
+            'images' => [$this->imageUpload('front.png')],
+        ]))->assertStatus(500);
+
+        $this->assertDatabaseMissing('products', ['slug' => 'nigeria-1994-home-shirt']);
+        $this->assertDatabaseCount('product_images', 0);
+    }
+
+    public function test_destroy_deletes_appwrite_images(): void
+    {
+        $this->configureAppwrite();
+
+        Http::fake([
+            'appwrite.example.test/*' => Http::response(null, 204),
+        ]);
+
+        $product = Product::factory()->create();
+        $product->images()->create([
+            'path' => 'appwrite:file-123',
+            'sort_order' => 0,
+            'is_primary' => true,
+        ]);
+
+        $this->deleteJson('/api/products/'.$product->id)->assertStatus(204);
+
+        $this->assertDatabaseMissing('products', ['id' => $product->id]);
+        $this->assertDatabaseCount('product_images', 0);
+        Http::assertSent(function (ClientRequest $request): bool {
+            return $request->method() === 'DELETE'
+                && $request->url() === 'https://appwrite.example.test/v1/storage/buckets/product-images/files/file-123';
+        });
     }
 
     public function test_show_returns_404_for_unknown_or_inactive_slug(): void
@@ -335,7 +461,8 @@ class ProductApiTest extends TestCase
             'is_primary' => true,
         ]);
 
-        $this->patch('/api/products/'.$product->id, [
+        $this->post('/api/products/'.$product->id, [
+            '_method' => 'PATCH',
             'images' => [$this->imageUpload('added.png')],
         ])
             ->assertStatus(200)
@@ -351,6 +478,48 @@ class ProductApiTest extends TestCase
 
         Storage::disk('public')->assertExists($existingPath);
         Storage::disk('public')->assertExists($images[1]->path);
+    }
+
+    public function test_update_can_replace_the_existing_image_gallery(): void
+    {
+        Storage::fake('public');
+
+        $product = Product::factory()->create();
+        $existingPath = $this->imageUpload('old.png')->store('products', 'public');
+        $product->images()->create([
+            'path' => $existingPath,
+            'sort_order' => 0,
+            'is_primary' => true,
+        ]);
+
+        $response = $this->post('/api/products/'.$product->id, [
+            '_method' => 'PATCH',
+            'replace_images' => '1',
+            'images' => [$this->imageUpload('replacement.png')],
+        ])
+            ->assertOk()
+            ->assertJsonCount(1, 'data.images')
+            ->assertJsonPath('data.images.0.is_primary', true);
+
+        $replacementPath = $response->json('data.images.0.path');
+
+        $this->assertDatabaseMissing('product_images', ['path' => $existingPath]);
+        $this->assertDatabaseHas('product_images', ['path' => $replacementPath, 'is_primary' => true]);
+        Storage::disk('public')->assertMissing($existingPath);
+        Storage::disk('public')->assertExists($replacementPath);
+    }
+
+    public function test_replacing_images_requires_at_least_one_new_upload(): void
+    {
+        $product = Product::factory()->create();
+
+        $this->post('/api/products/'.$product->id, [
+            '_method' => 'PATCH',
+            'replace_images' => '1',
+            'name' => $product->name,
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['images']);
     }
 
     public function test_update_returns_404_for_unknown_key(): void
@@ -394,6 +563,17 @@ class ProductApiTest extends TestCase
     {
         $this->deleteJson('/api/products/999')->assertNotFound();
         $this->deleteJson('/api/products/no-such-slug')->assertNotFound();
+    }
+
+    private function configureAppwrite(): void
+    {
+        config([
+            'filesystems.product_images_driver' => 'appwrite',
+            'services.appwrite.endpoint' => 'https://appwrite.example.test/v1',
+            'services.appwrite.project' => 'project-123',
+            'services.appwrite.key' => 'api-key',
+            'services.appwrite.bucket' => 'product-images',
+        ]);
     }
 
     /**
