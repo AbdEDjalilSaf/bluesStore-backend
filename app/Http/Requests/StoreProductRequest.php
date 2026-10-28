@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Rules\UniqueProductSlug;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Rule;
 use OpenApi\Attributes as OA;
 
@@ -26,8 +27,11 @@ use OpenApi\Attributes as OA;
         new OA\Property(
             property: 'images',
             type: 'array',
-            description: 'Image uploads. Requires a multipart/form-data request.',
-            items: new OA\Items(type: 'string', format: 'binary')
+            description: 'Image uploads or image URLs. Requires a multipart/form-data request for uploads.',
+            items: new OA\Items(oneOf: [
+                new OA\Schema(type: 'string', format: 'binary'),
+                new OA\Schema(type: 'string', format: 'uri'),
+            ])
         ),
     ]
 )]
@@ -38,11 +42,125 @@ class StoreProductRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if (! $this->has('images')) {
+            return;
+        }
+
+        $images = $this->input('images');
+
+        if (is_string($images)) {
+            $decoded = json_decode($images, true);
+
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $this->merge(['images' => $decoded]);
+            } elseif (str_contains($images, ',')) {
+                $this->merge([
+                    'images' => array_values(array_filter(array_map('trim', explode(',', $images)), fn ($value) => $value !== '')),
+                ]);
+            } else {
+                $trimmed = trim($images);
+                if ($trimmed !== '') {
+                    $this->merge(['images' => [$trimmed]]);
+                } else {
+                    $this->merge(['images' => []]);
+                }
+            }
+
+            return;
+        }
+
+        if (is_array($images)) {
+            $normalized = [];
+
+            foreach ($images as $image) {
+                if ($image instanceof UploadedFile) {
+                    $normalized[] = $image;
+
+                    continue;
+                }
+
+                if (is_string($image)) {
+                    $trimmed = trim($image);
+
+                    if ($trimmed === '') {
+                        continue;
+                    }
+
+                    $decoded = json_decode($trimmed, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                        foreach ($decoded as $nested) {
+                            if ($nested instanceof UploadedFile) {
+                                $normalized[] = $nested;
+                                continue;
+                            }
+                            if (is_string($nested)) {
+                                $nestedTrimmed = trim($nested);
+                                if ($nestedTrimmed !== '') {
+                                    $normalized[] = $nestedTrimmed;
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
+                    $normalized[] = $trimmed;
+                    continue;
+                }
+            }
+
+            $this->merge(['images' => $normalized]);
+        }
+    }
+
     /**
      * @return array<string, mixed>
      */
     public function rules(): array
     {
+        $images = $this->input('images');
+        $hasFileImages = false;
+
+        if (is_array($images)) {
+            foreach ($images as $image) {
+                if ($image instanceof UploadedFile) {
+                    $hasFileImages = true;
+                    break;
+                }
+            }
+        } elseif ($images instanceof UploadedFile) {
+            $hasFileImages = true;
+        }
+
+        $imagesRules = ['sometimes', 'array', 'max:8'];
+
+        if ($hasFileImages) {
+            $imagesRules[] = function ($attribute, $value, $fail) {
+                if (! is_array($value)) {
+                    $fail('The images field must be an array.');
+
+                    return;
+                }
+
+                foreach ($value as $image) {
+                    if (! $image instanceof UploadedFile) {
+                        $fail('The images must be valid image uploads.');
+
+                        return;
+                    }
+                }
+            };
+        } else {
+            $imagesRules[] = 'min:1';
+        }
+
+        $imageItemRules = $hasFileImages
+            ? ['image', 'mimes:jpeg,jpg,png,webp', 'max:2048']
+            : ['required', 'string'];
+
+        $imageItemRules[] = $hasFileImages ? 'nullable' : ['url'];
+
         return [
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', new UniqueProductSlug],
@@ -55,8 +173,8 @@ class StoreProductRequest extends FormRequest
             'size' => ['nullable', 'string', 'max:255'],
             'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')],
             'is_active' => ['sometimes', 'boolean'],
-            'images' => ['sometimes', 'array', 'max:8'],
-            'images.*' => ['image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
+            'images' => $imagesRules,
+            'images.*' => $imageItemRules,
         ];
     }
 

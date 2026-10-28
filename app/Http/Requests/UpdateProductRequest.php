@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Contracts\ProductCatalog;
 use App\Rules\UniqueProductSlug;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Rule;
 use OpenApi\Attributes as OA;
 
@@ -27,8 +28,11 @@ use OpenApi\Attributes as OA;
         new OA\Property(
             property: 'images',
             type: 'array',
-            description: 'Image uploads appended by default, or used to replace the gallery when replace_images is true. Requires multipart/form-data.',
-            items: new OA\Items(type: 'string', format: 'binary')
+            description: 'Image uploads or image URLs appended by default, or used to replace the gallery when replace_images is true.',
+            items: new OA\Items(oneOf: [
+                new OA\Schema(type: 'string', format: 'binary'),
+                new OA\Schema(type: 'string', format: 'uri'),
+            ])
         ),
     ]
 )]
@@ -39,6 +43,78 @@ class UpdateProductRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if (! $this->has('images')) {
+            return;
+        }
+
+        $images = $this->input('images');
+
+        if (is_string($images)) {
+            $decoded = json_decode($images, true);
+
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                $this->merge(['images' => $decoded]);
+            } elseif (str_contains($images, ',')) {
+                $this->merge([
+                    'images' => array_values(array_filter(array_map('trim', explode(',', $images)), fn ($value) => $value !== '')),
+                ]);
+            } else {
+                $trimmed = trim($images);
+                if ($trimmed !== '') {
+                    $this->merge(['images' => [$trimmed]]);
+                } else {
+                    $this->merge(['images' => []]);
+                }
+            }
+
+            return;
+        }
+
+        if (is_array($images)) {
+            $normalized = [];
+
+            foreach ($images as $image) {
+                if ($image instanceof UploadedFile) {
+                    $normalized[] = $image;
+
+                    continue;
+                }
+
+                if (is_string($image)) {
+                    $trimmed = trim($image);
+
+                    if ($trimmed === '') {
+                        continue;
+                    }
+
+                    $decoded = json_decode($trimmed, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                        foreach ($decoded as $nested) {
+                            if ($nested instanceof UploadedFile) {
+                                $normalized[] = $nested;
+                                continue;
+                            }
+                            if (is_string($nested)) {
+                                $nestedTrimmed = trim($nested);
+                                if ($nestedTrimmed !== '') {
+                                    $normalized[] = $nestedTrimmed;
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
+                    $normalized[] = $trimmed;
+                    continue;
+                }
+            }
+
+            $this->merge(['images' => $normalized]);
+        }
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -47,6 +123,40 @@ class UpdateProductRequest extends FormRequest
         $product = app(ProductCatalog::class)->find((string) $this->route('key'));
 
         abort_if($product === null, 404);
+
+        $images = $this->input('images');
+        $replaceImages = filter_var($this->input('replace_images'), FILTER_VALIDATE_BOOLEAN);
+        $hasFileImages = false;
+
+        if (is_array($images)) {
+            foreach ($images as $image) {
+                if ($image instanceof UploadedFile) {
+                    $hasFileImages = true;
+                    break;
+                }
+            }
+        } elseif ($images instanceof UploadedFile) {
+            $hasFileImages = true;
+        }
+
+        $imagesRules = [];
+
+        if ($replaceImages) {
+            $imagesRules[] = 'required';
+        } else {
+            $imagesRules[] = 'sometimes';
+        }
+
+        $imagesRules[] = 'array';
+        $imagesRules[] = 'max:8';
+
+        if ($replaceImages && ! $hasFileImages) {
+            $imagesRules[] = 'min:1';
+        }
+
+        $imageItemRules = $hasFileImages
+            ? ['image', 'mimes:jpeg,jpg,png,webp', 'max:2048']
+            : ['required', 'string', 'url'];
 
         return [
             'name' => ['sometimes', 'string', 'max:255'],
@@ -61,8 +171,8 @@ class UpdateProductRequest extends FormRequest
             'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')],
             'is_active' => ['sometimes', 'boolean'],
             'replace_images' => ['sometimes', 'boolean'],
-            'images' => ['required_if:replace_images,1', 'array', 'max:8'],
-            'images.*' => ['image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
+            'images' => $imagesRules,
+            'images.*' => $imageItemRules,
         ];
     }
 
