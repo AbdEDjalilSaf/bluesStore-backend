@@ -2,13 +2,12 @@
 
 namespace App\Exceptions;
 
-use App\Models\Product;
 use RuntimeException;
 
 class NotEnoughStockException extends RuntimeException
 {
-    public static function forProduct(Product $product): self
+    public static function forProduct(string $productName): self
     {
-        return new self("Not enough stock for {$product->name}.");
+        return new self("Not enough stock for {$productName}.");
     }
 }

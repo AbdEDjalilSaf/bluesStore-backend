@@ -95,6 +95,7 @@ class ProductImageStorage
 
         try {
             $response = Http::withHeaders(self::appwriteHeaders($config))
+                ->withOptions(self::appwriteHttpOptions())
                 ->attach('file', $stream, $file->getClientOriginalName())
                 ->post(self::appwriteFilesUrl($config), [
                     'fileId' => $fileId,
@@ -127,6 +128,7 @@ class ProductImageStorage
         $config = self::appwriteConfig();
 
         $response = Http::withHeaders(self::appwriteHeaders($config))
+            ->withOptions(self::appwriteHttpOptions())
             ->delete(self::appwriteFilesUrl($config).'/'.rawurlencode($fileId));
 
         if ($response->failed() && $response->status() !== 404) {
@@ -145,6 +147,17 @@ class ProductImageStorage
         return self::appwriteFilesUrl($config)
             .'/'.rawurlencode($fileId)
             .'/view?project='.rawurlencode($config['project']);
+    }
+
+    /**
+     * @return array{force_ip_resolve: string, verify: bool|string}
+     */
+    private static function appwriteHttpOptions(): array
+    {
+        return [
+            'force_ip_resolve' => 'v4',
+            'verify' => config('services.appwrite.verify', true),
+        ];
     }
 
     /**

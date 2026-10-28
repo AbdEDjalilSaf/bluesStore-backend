@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\OrderStatus;
 use App\Models\Order;
-use App\Models\Product;
 use App\Models\Wilaya;
 use App\Services\OrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -19,13 +18,13 @@ class OrderTrackingTest extends TestCase
     private function placeOrder(string $phone = '0550123456'): Order
     {
         $wilaya = Wilaya::factory()->create(['shipping_fee' => 400]);
-        $product = Product::factory()->create(['price' => 3000, 'stock' => 5]);
+        $product = $this->makeProduct(['price' => 3000, 'stock' => 5]);
 
         return app(OrderService::class)->place([
             'customer_name' => 'Karim Benali',
             'phone' => $phone,
             'wilaya_id' => $wilaya->id,
-            'items' => [['product_id' => $product->id]],
+            'items' => [['product_id' => $product['id']]],
         ]);
     }
 

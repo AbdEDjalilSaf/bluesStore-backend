@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests;
 
+use App\Contracts\ProductCatalog;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(
@@ -47,7 +49,48 @@ class StoreOrderRequest extends FormRequest
             'phone' => ['required', 'string', 'regex:/^0[5-7][0-9]{8}$/'],
             'wilaya_id' => ['required', 'integer', Rule::exists('wilayas', 'id')->where('is_active', true)],
             'items' => ['required', 'array', 'min:1', 'max:100'],
-            'items.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('is_active', true)],
+            'items.*.product_id' => ['required', 'integer', 'min:1'],
+        ];
+    }
+
+    /**
+     * @return array<int, callable(Validator): void>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                if ($validator->errors()->has('items')) {
+                    return;
+                }
+
+                $items = $this->input('items');
+
+                if (! is_array($items)) {
+                    return;
+                }
+
+                $productIds = [];
+
+                foreach ($items as $index => $item) {
+                    if (is_array($item) && isset($item['product_id']) && is_numeric($item['product_id'])) {
+                        $productIds[$index] = (int) $item['product_id'];
+                    }
+                }
+
+                $products = app(ProductCatalog::class)->findMany(array_values($productIds));
+
+                foreach ($productIds as $index => $productId) {
+                    $product = $products[$productId] ?? null;
+
+                    if (! $product || ! $product['is_active']) {
+                        $validator->errors()->add(
+                            "items.{$index}.product_id",
+                            'The selected product is not available.'
+                        );
+                    }
+                }
+            },
         ];
     }
 

@@ -2,7 +2,8 @@
 
 namespace App\Http\Requests;
 
-use App\Models\Product;
+use App\Contracts\ProductCatalog;
+use App\Rules\UniqueProductSlug;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use OpenApi\Attributes as OA;
@@ -43,11 +44,13 @@ class UpdateProductRequest extends FormRequest
      */
     public function rules(): array
     {
-        $productId = Product::findByKey((string) $this->route('key'))->id;
+        $product = app(ProductCatalog::class)->find((string) $this->route('key'));
+
+        abort_if($product === null, 404);
 
         return [
             'name' => ['sometimes', 'string', 'max:255'],
-            'slug' => ['sometimes', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', Rule::unique('products', 'slug')->ignore($productId)],
+            'slug' => ['sometimes', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', new UniqueProductSlug($product['id'])],
             'team' => ['sometimes', 'string', 'max:255'],
             'year' => ['sometimes', 'integer', 'min:1900', 'max:2100'],
             'description' => ['sometimes', 'string'],

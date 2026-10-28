@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\OrderStatus;
 use App\Models\Order;
-use App\Models\Product;
 use App\Models\Wilaya;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -30,16 +29,20 @@ class AdminOrderTest extends TestCase
         $this->adminHeaders = ['X-Admin-Token' => self::ADMIN_TOKEN];
     }
 
-    private function makeProduct(array $attributes = []): Product
+    protected function makeProduct(array $attributes = []): array
     {
-        return Product::factory()->create(array_merge([
+        return $this->catalog->createProduct(array_merge([
             'name' => 'Retro Shirt',
+            'slug' => 'test-shirt-'.(count($this->catalog->products()) + 1),
+            'team' => 'Algeria',
+            'year' => 2020,
+            'description' => 'A test shirt.',
             'price' => 1000,
             'stock' => 5,
         ], $attributes));
     }
 
-    private function placeOrder(Product $product, int $quantity = 1): Order
+    private function placeOrder(array $product, int $quantity = 1): Order
     {
         $wilaya = Wilaya::factory()->create(['shipping_fee' => 400]);
 
@@ -47,7 +50,7 @@ class AdminOrderTest extends TestCase
             'customer_name' => 'Karim Benali',
             'phone' => '0550123456',
             'wilaya_id' => $wilaya->id,
-            'items' => array_fill(0, $quantity, ['product_id' => $product->id]),
+            'items' => array_fill(0, $quantity, ['product_id' => $product['id']]),
         ])->assertStatus(201);
 
         return Order::query()->latest('id')->firstOrFail();
@@ -226,7 +229,7 @@ class AdminOrderTest extends TestCase
     {
         $product = $this->makeProduct(['stock' => 5]);
         $order = $this->placeOrder($product, 2);
-        $this->assertSame(3, $product->fresh()->stock);
+        $this->assertSame(3, $this->catalog->find($product['id'])['stock']);
 
         $this->json('PATCH', "/api/admin/orders/{$order->id}/status", ['status' => 'confirmed'], $this->adminHeaders)
             ->assertStatus(200);
@@ -236,10 +239,10 @@ class AdminOrderTest extends TestCase
             ->assertJsonPath('data.status', 'cancelled');
 
         $this->assertSame(OrderStatus::Cancelled, $order->fresh()->status);
-        $this->assertSame(5, $product->fresh()->stock);
+        $this->assertSame(5, $this->catalog->find($product['id'])['stock']);
 
         $shippedOrder = $this->placeOrder($product, 2);
-        $this->assertSame(3, $product->fresh()->stock);
+        $this->assertSame(3, $this->catalog->find($product['id'])['stock']);
 
         $this->json('PATCH', "/api/admin/orders/{$shippedOrder->id}/status", ['status' => 'confirmed'], $this->adminHeaders)
             ->assertStatus(200);
@@ -251,7 +254,7 @@ class AdminOrderTest extends TestCase
             ->assertJsonPath('message', 'Cannot change order status from shipped to cancelled.');
 
         $this->assertSame(OrderStatus::Shipped, $shippedOrder->fresh()->status);
-        $this->assertSame(3, $product->fresh()->stock);
+        $this->assertSame(3, $this->catalog->find($product['id'])['stock']);
     }
 
     public function test_deleting_pending_and_cancelled_orders(): void

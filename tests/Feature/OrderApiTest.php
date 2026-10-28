@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Enums\OrderStatus;
 use App\Models\Order;
-use App\Models\Product;
 use App\Models\Wilaya;
 use App\Services\OrderService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -26,11 +25,11 @@ class OrderApiTest extends TestCase
     public function test_valid_order_decrements_stock_and_snapshots_prices(): void
     {
         $wilaya = Wilaya::factory()->create(['name' => 'Algiers', 'shipping_fee' => 400]);
-        $product = Product::factory()->create(['name' => 'Retro Shirt', 'price' => 3000, 'stock' => 5]);
+        $product = $this->makeProduct(['name' => 'Retro Shirt', 'price' => 3000, 'stock' => 5]);
 
         $response = $this->postJson('/api/orders', $this->makeOrder([
-            ['product_id' => $product->id],
-            ['product_id' => $product->id],
+            ['product_id' => $product['id']],
+            ['product_id' => $product['id']],
         ], ['wilaya_id' => $wilaya->id]));
 
         $response->assertStatus(201)
@@ -47,7 +46,7 @@ class OrderApiTest extends TestCase
 
         $this->assertMatchesRegularExpression('/^BC-\d{8}-[A-Z0-9]{4}$/', $response->json('data.order_number'));
 
-        $this->assertSame(3, $product->fresh()->stock);
+        $this->assertSame(3, $this->catalog->find($product['id'])['stock']);
         $this->assertSame(1, Order::count());
 
         $order = Order::first();
@@ -65,32 +64,32 @@ class OrderApiTest extends TestCase
         ]);
 
         $wilaya = Wilaya::factory()->create(['shipping_fee' => 500]);
-        $product = Product::factory()->create(['price' => 1000, 'stock' => 2]);
+        $product = $this->makeProduct(['price' => 1000, 'stock' => 2]);
 
         $this->postJson('/api/orders', $this->makeOrder(
-            [['product_id' => $product->id]],
+            [['product_id' => $product['id']]],
             ['wilaya_id' => $wilaya->id]
         ))->assertStatus(201);
 
         $this->assertSame(1, Order::count());
-        $this->assertSame(1, $product->fresh()->stock);
+        $this->assertSame(1, $this->catalog->find($product['id'])['stock']);
     }
 
     public function test_order_above_available_stock_is_rejected(): void
     {
         $wilaya = Wilaya::factory()->create(['shipping_fee' => 500]);
-        $product = Product::factory()->create(['price' => 2000, 'stock' => 2]);
+        $product = $this->makeProduct(['price' => 2000, 'stock' => 2]);
 
         $response = $this->postJson('/api/orders', $this->makeOrder([
-            ['product_id' => $product->id],
-            ['product_id' => $product->id],
-            ['product_id' => $product->id],
+            ['product_id' => $product['id']],
+            ['product_id' => $product['id']],
+            ['product_id' => $product['id']],
         ], ['wilaya_id' => $wilaya->id]));
 
         $response->assertStatus(422)
-            ->assertJsonPath('message', 'Not enough stock for '.$product->name.'.');
+            ->assertJsonPath('message', 'Not enough stock for '.$product['name'].'.');
 
-        $this->assertSame(2, $product->fresh()->stock);
+        $this->assertSame(2, $this->catalog->find($product['id'])['stock']);
         $this->assertSame(0, Order::count());
         $this->assertDatabaseCount('order_items', 0);
     }
@@ -98,28 +97,28 @@ class OrderApiTest extends TestCase
     public function test_two_orders_for_the_last_piece_cannot_both_succeed(): void
     {
         $wilaya = Wilaya::factory()->create(['shipping_fee' => 400]);
-        $product = Product::factory()->create(['price' => 1000, 'stock' => 1]);
+        $product = $this->makeProduct(['price' => 1000, 'stock' => 1]);
 
-        $payload = $this->makeOrder([['product_id' => $product->id]], ['wilaya_id' => $wilaya->id]);
+        $payload = $this->makeOrder([['product_id' => $product['id']]], ['wilaya_id' => $wilaya->id]);
 
         $this->postJson('/api/orders', $payload)->assertStatus(201);
-        $this->assertSame(0, $product->fresh()->stock);
+        $this->assertSame(0, $this->catalog->find($product['id'])['stock']);
 
         $this->postJson('/api/orders', $payload)->assertStatus(422);
 
         $this->assertSame(1, Order::count());
-        $this->assertSame(0, $product->fresh()->stock);
+        $this->assertSame(0, $this->catalog->find($product['id'])['stock']);
         $this->assertDatabaseCount('order_items', 1);
     }
 
     public function test_shipping_is_free_at_or_above_the_threshold(): void
     {
         $wilaya = Wilaya::factory()->create(['shipping_fee' => 500]);
-        $product = Product::factory()->create(['price' => 6000, 'stock' => 5]);
+        $product = $this->makeProduct(['price' => 6000, 'stock' => 5]);
 
         $response = $this->postJson('/api/orders', $this->makeOrder([
-            ['product_id' => $product->id],
-            ['product_id' => $product->id],
+            ['product_id' => $product['id']],
+            ['product_id' => $product['id']],
         ], ['wilaya_id' => $wilaya->id]));
 
         $response->assertStatus(201)
@@ -131,38 +130,38 @@ class OrderApiTest extends TestCase
     public function test_cancel_restores_stock_and_is_idempotent(): void
     {
         $wilaya = Wilaya::factory()->create(['shipping_fee' => 400]);
-        $product = Product::factory()->create(['price' => 1000, 'stock' => 5]);
+        $product = $this->makeProduct(['price' => 1000, 'stock' => 5]);
 
         $this->postJson('/api/orders', $this->makeOrder([
-            ['product_id' => $product->id],
-            ['product_id' => $product->id],
+            ['product_id' => $product['id']],
+            ['product_id' => $product['id']],
         ], ['wilaya_id' => $wilaya->id]))->assertStatus(201);
 
         $order = Order::first();
-        $this->assertSame(3, $product->fresh()->stock);
+        $this->assertSame(3, $this->catalog->find($product['id'])['stock']);
 
         $service = app(OrderService::class);
 
         $service->cancel($order);
-        $this->assertSame(5, $product->fresh()->stock);
+        $this->assertSame(5, $this->catalog->find($product['id'])['stock']);
         $this->assertTrue($order->fresh()->status === OrderStatus::Cancelled);
 
         $service->cancel($order->fresh());
-        $this->assertSame(5, $product->fresh()->stock);
+        $this->assertSame(5, $this->catalog->find($product['id'])['stock']);
     }
 
     public function test_validates_customer_details(): void
     {
         $wilaya = Wilaya::factory()->create(['shipping_fee' => 500]);
-        $product = Product::factory()->create(['price' => 1000, 'stock' => 5]);
+        $product = $this->makeProduct(['price' => 1000, 'stock' => 5]);
 
         $this->postJson('/api/orders', $this->makeOrder(
-            [['product_id' => $product->id]],
+            [['product_id' => $product['id']]],
             ['wilaya_id' => $wilaya->id, 'phone' => '12345']
         ))->assertStatus(422)->assertJsonValidationErrors('phone');
 
         $this->postJson('/api/orders', $this->makeOrder(
-            [['product_id' => $product->id]],
+            [['product_id' => $product['id']]],
             ['wilaya_id' => 999]
         ))->assertStatus(422)->assertJsonValidationErrors('wilaya_id');
 
@@ -176,9 +175,9 @@ class OrderApiTest extends TestCase
             ['wilaya_id' => $wilaya->id]
         ))->assertStatus(422)->assertJsonValidationErrors('items.0.product_id');
 
-        $inactive = Product::factory()->create(['price' => 1000, 'stock' => 5, 'is_active' => false]);
+        $inactive = $this->makeProduct(['price' => 1000, 'stock' => 5, 'is_active' => false]);
         $this->postJson('/api/orders', $this->makeOrder(
-            [['product_id' => $inactive->id]],
+            [['product_id' => $inactive['id']]],
             ['wilaya_id' => $wilaya->id]
         ))->assertStatus(422)->assertJsonValidationErrors('items.0.product_id');
 
@@ -190,8 +189,8 @@ class OrderApiTest extends TestCase
         config(['cache.default' => 'array']);
 
         $wilaya = Wilaya::factory()->create(['shipping_fee' => 500]);
-        $product = Product::factory()->create(['price' => 1000, 'stock' => 100]);
-        $payload = $this->makeOrder([['product_id' => $product->id]], ['wilaya_id' => $wilaya->id]);
+        $product = $this->makeProduct(['price' => 1000, 'stock' => 100]);
+        $payload = $this->makeOrder([['product_id' => $product['id']]], ['wilaya_id' => $wilaya->id]);
 
         foreach (range(1, 5) as $i) {
             $this->postJson('/api/orders', $payload)->assertStatus(201);

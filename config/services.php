@@ -28,6 +28,7 @@ return [
         'key' => env('APPWRITE_API_KEY'),
         'bucket' => env('APPWRITE_PRODUCT_IMAGES_BUCKET_ID'),
         'database' => env('APPWRITE_DATABASE_ID'),
+        'verify' => env('APPWRITE_VERIFY', true),
     ],
 
     'ses' => [

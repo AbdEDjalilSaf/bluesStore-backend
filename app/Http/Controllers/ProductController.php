@@ -2,20 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\ProductCatalog;
 use App\Http\Requests\StoreProductRequest;
 use App\Http\Requests\UpdateProductRequest;
 use App\Http\Resources\ProductResource;
-use App\Models\Product;
 use App\Support\ProductImageStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\DB;
 use OpenApi\Attributes as OA;
 use Throwable;
 
 class ProductController extends Controller
 {
+    public function __construct(
+        private readonly ProductCatalog $catalog
+    ) {}
+
     /**
      * List all active shirts without pagination or filters.
      */
@@ -30,14 +33,7 @@ class ProductController extends Controller
     )]
     public function index(Request $request)
     {
-        $products = Product::query()
-            ->where('is_active', true)
-            ->with(['images' => fn ($query) => $query->orderBy('sort_order')])
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->get();
-
-        return ProductResource::collection($products);
+        return ProductResource::collection($this->catalog->allActive());
     }
 
     /**
@@ -46,7 +42,7 @@ class ProductController extends Controller
     #[OA\Post(
         path: '/products',
         summary: 'Create a product',
-        description: 'Create a product and, when images are sent, store them on the configured product image provider and create their rows in the same transaction (admin).',
+        description: 'Create a product and, when images are sent, store them on the configured product image provider and create their rows in Appwrite TablesDB (admin).',
         tags: ['products'],
         requestBody: new OA\RequestBody(
             required: true,
@@ -70,22 +66,37 @@ class ProductController extends Controller
         unset($data['images']);
 
         $storedPaths = [];
+        $product = null;
+        $createdImageIds = [];
 
         try {
-            $product = DB::transaction(function () use ($data, $files, &$storedPaths) {
-                $product = Product::create($data);
+            $product = $this->catalog->create($data);
+            $this->storeFiles($files, $storedPaths);
 
-                $this->storeImages($product, $files, $storedPaths);
-
-                return $product;
-            });
+            foreach ($storedPaths as $index => $path) {
+                $image = $this->catalog->addImage((string) $product['id'], $path, $index, $index === 0);
+                $createdImageIds[] = (string) $image['id'];
+            }
         } catch (Throwable $exception) {
+            foreach ($createdImageIds as $imageId) {
+                $this->deleteImageQuietly($imageId);
+            }
+
+            if ($product !== null) {
+                try {
+                    $this->catalog->deleteImagesForProduct((string) $product['id']);
+                    $this->catalog->delete((string) $product['id']);
+                } catch (Throwable) {
+                    // The original failure is more useful than a secondary cleanup failure.
+                }
+            }
+
             ProductImageStorage::delete($storedPaths);
 
             throw $exception;
         }
 
-        return (new ProductResource($product->load(['images' => fn ($query) => $query->orderBy('sort_order')])))
+        return (new ProductResource($this->catalog->find((string) $product['id'])))
             ->response()
             ->setStatusCode(201);
     }
@@ -108,11 +119,11 @@ class ProductController extends Controller
     )]
     public function show(string $key)
     {
-        $product = Product::findByKey($key);
+        $product = $this->catalog->find($key);
 
-        abort_unless($product->is_active, 404);
+        abort_if($product === null || ! $product['is_active'], 404);
 
-        return new ProductResource($product->load(['images' => fn ($query) => $query->orderBy('sort_order')]));
+        return new ProductResource($product);
     }
 
     /**
@@ -144,7 +155,9 @@ class ProductController extends Controller
     )]
     public function update(UpdateProductRequest $request, string $key)
     {
-        $product = Product::findByKey($key);
+        $product = $this->catalog->find($key);
+
+        abort_if($product === null, 404);
 
         $data = $request->validated();
         $files = $data['images'] ?? [];
@@ -152,20 +165,44 @@ class ProductController extends Controller
         unset($data['images'], $data['replace_images']);
 
         $storedPaths = [];
+        $createdImageIds = [];
         $pathsToDelete = [];
 
         try {
-            DB::transaction(function () use ($product, $data, $files, $replaceImages, &$storedPaths, &$pathsToDelete) {
-                $product->update($data);
+            $this->storeFiles($files, $storedPaths);
 
-                if ($replaceImages) {
-                    $pathsToDelete = $product->images()->pluck('path')->all();
-                    $product->images()->delete();
+            $existingImages = $this->catalog->images((string) $product['id']);
+            $lastSortOrder = $existingImages === []
+                ? null
+                : max(array_column($existingImages, 'sort_order'));
+            $nextSortOrder = $replaceImages || $lastSortOrder === null
+                ? 0
+                : ((int) $lastSortOrder) + 1;
+            $hasPrimary = ! $replaceImages && in_array(true, array_column($existingImages, 'is_primary'), true);
+
+            $this->catalog->update((string) $product['id'], $data);
+
+            foreach ($storedPaths as $index => $path) {
+                $image = $this->catalog->addImage(
+                    (string) $product['id'],
+                    $path,
+                    $nextSortOrder + $index,
+                    $index === 0 && ! $hasPrimary
+                );
+                $createdImageIds[] = (string) $image['id'];
+            }
+
+            if ($replaceImages) {
+                foreach ($existingImages as $image) {
+                    $this->catalog->deleteImage((string) $image['id']);
+                    $pathsToDelete[] = $image['path'];
                 }
-
-                $this->storeImages($product, $files, $storedPaths);
-            });
+            }
         } catch (Throwable $exception) {
+            foreach ($createdImageIds as $imageId) {
+                $this->deleteImageQuietly($imageId);
+            }
+
             ProductImageStorage::delete($storedPaths);
 
             throw $exception;
@@ -173,7 +210,7 @@ class ProductController extends Controller
 
         ProductImageStorage::delete($pathsToDelete);
 
-        return new ProductResource($product->load(['images' => fn ($query) => $query->orderBy('sort_order')]));
+        return new ProductResource($this->catalog->find((string) $product['id']));
     }
 
     /**
@@ -194,10 +231,14 @@ class ProductController extends Controller
     )]
     public function destroy(string $key): JsonResponse
     {
-        $product = Product::findByKey($key);
-        $paths = $product->images()->pluck('path')->all();
+        $product = $this->catalog->find($key);
 
-        $product->delete();
+        abort_if($product === null, 404);
+
+        $paths = array_column($product['images'], 'path');
+
+        $this->catalog->delete((string) $product['id']);
+        $this->catalog->deleteImagesForProduct((string) $product['id']);
 
         ProductImageStorage::delete($paths);
 
@@ -205,31 +246,22 @@ class ProductController extends Controller
     }
 
     /**
-     * Store the uploaded images on the configured product image provider.
-     *
      * @param  array<int, UploadedFile>  $files
      * @param  array<int, string>  $storedPaths
      */
-    private function storeImages(Product $product, array $files, array &$storedPaths): void
+    private function storeFiles(array $files, array &$storedPaths): void
     {
-        if ($files === []) {
-            return;
+        foreach (array_values($files) as $file) {
+            $storedPaths[] = ProductImageStorage::store($file);
         }
+    }
 
-        $lastSortOrder = $product->images()->max('sort_order');
-        $nextSortOrder = $lastSortOrder === null ? 0 : ((int) $lastSortOrder) + 1;
-        $hasPrimary = $product->images()->where('is_primary', true)->exists();
-
-        foreach (array_values($files) as $index => $file) {
-            $path = ProductImageStorage::store($file);
-
-            $storedPaths[] = $path;
-
-            $product->images()->create([
-                'path' => $path,
-                'sort_order' => $nextSortOrder++,
-                'is_primary' => $index === 0 && ! $hasPrimary,
-            ]);
+    private function deleteImageQuietly(string $imageId): void
+    {
+        try {
+            $this->catalog->deleteImage($imageId);
+        } catch (Throwable) {
+            // Preserve the original failure.
         }
     }
 }

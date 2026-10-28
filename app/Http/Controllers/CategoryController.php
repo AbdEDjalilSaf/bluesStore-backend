@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\ProductCatalog;
 use App\Http\Requests\StoreCategoryRequest;
 use App\Http\Requests\UpdateCategoryRequest;
 use App\Http\Resources\CategoryResource;
@@ -11,6 +12,10 @@ use OpenApi\Attributes as OA;
 
 class CategoryController extends Controller
 {
+    public function __construct(
+        private readonly ProductCatalog $catalog
+    ) {}
+
     /**
      * List all categories (public).
      */
@@ -127,7 +132,7 @@ class CategoryController extends Controller
     {
         $category = Category::findOrFail($id);
 
-        if ($category->products()->exists()) {
+        if ($this->catalog->existsForCategory($category->id)) {
             return response()->json(['message' => 'Cannot delete category with existing products.'], 422);
         }
 

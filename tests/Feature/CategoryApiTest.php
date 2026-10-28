@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Category;
-use App\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -120,7 +119,7 @@ class CategoryApiTest extends TestCase
     public function test_cannot_delete_category_when_has_products(): void
     {
         $category = Category::factory()->create();
-        Product::factory()->create(['category_id' => $category->id]);
+        $this->makeProduct(['category_id' => $category->id]);
 
         $response = $this->deleteJson("/api/categories/{$category->id}");
 

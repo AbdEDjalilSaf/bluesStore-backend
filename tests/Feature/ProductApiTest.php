@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Category;
-use App\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Http\UploadedFile;
@@ -29,8 +28,10 @@ class ProductApiTest extends TestCase
 
     public function test_index_returns_all_active_shirts_without_pagination(): void
     {
-        Product::factory()->count(3)->create();
-        Product::factory()->create(['name' => 'Hidden Shirt', 'slug' => 'hidden-shirt', 'is_active' => false]);
+        $this->makeProduct(['name' => 'First']);
+        $this->makeProduct(['name' => 'Second']);
+        $this->makeProduct(['name' => 'Third']);
+        $this->makeProduct(['name' => 'Hidden Shirt', 'slug' => 'hidden-shirt', 'is_active' => false]);
 
         $response = $this->getJson('/api/products');
 
@@ -43,13 +44,13 @@ class ProductApiTest extends TestCase
 
     public function test_index_ignores_filter_search_sort_and_pagination_params(): void
     {
-        Product::factory()->create([
+        $this->makeProduct([
             'name' => 'Algeria Home',
             'slug' => 'algeria-home',
             'team' => 'Algeria',
             'price' => 5000,
         ]);
-        Product::factory()->create([
+        $this->makeProduct([
             'name' => 'Brazil Away',
             'slug' => 'brazil-away',
             'team' => 'Brazil',
@@ -70,7 +71,7 @@ class ProductApiTest extends TestCase
 
     public function test_index_returns_computed_discount_and_stock_fields(): void
     {
-        Product::factory()->create([
+        $this->makeProduct([
             'name' => 'Sale Shirt',
             'slug' => 'sale-shirt',
             'price' => 5000,
@@ -87,7 +88,7 @@ class ProductApiTest extends TestCase
 
     public function test_show_returns_product_by_slug(): void
     {
-        Product::factory()->create([
+        $this->makeProduct([
             'name' => 'Show Me',
             'slug' => 'show-me',
             'price' => 5000,
@@ -107,12 +108,8 @@ class ProductApiTest extends TestCase
     {
         config(['filesystems.disks.public.url' => 'https://old-api.example.test/storage']);
 
-        $product = Product::factory()->create();
-        $product->images()->create([
-            'path' => 'products/front.png',
-            'sort_order' => 0,
-            'is_primary' => true,
-        ]);
+        $product = $this->makeProduct();
+        $this->catalog->addImage((string) $product['id'], 'products/front.png', 0, true);
 
         $this->getJson('http://localhost/api/products')
             ->assertOk()
@@ -124,12 +121,8 @@ class ProductApiTest extends TestCase
     {
         $this->configureAppwrite();
 
-        $product = Product::factory()->create();
-        $product->images()->create([
-            'path' => 'appwrite:file-123',
-            'sort_order' => 0,
-            'is_primary' => true,
-        ]);
+        $product = $this->makeProduct();
+        $this->catalog->addImage((string) $product['id'], 'appwrite:file-123', 0, true);
 
         $this->getJson('/api/products')
             ->assertOk()
@@ -180,8 +173,8 @@ class ProductApiTest extends TestCase
             'images' => [$this->imageUpload('front.png')],
         ]))->assertStatus(500);
 
-        $this->assertDatabaseMissing('products', ['slug' => 'nigeria-1994-home-shirt']);
-        $this->assertDatabaseCount('product_images', 0);
+        $this->assertSame([], $this->catalog->products());
+        $this->assertSame([], $this->catalog->images('1'));
     }
 
     public function test_destroy_deletes_appwrite_images(): void
@@ -192,17 +185,13 @@ class ProductApiTest extends TestCase
             'appwrite.example.test/*' => Http::response(null, 204),
         ]);
 
-        $product = Product::factory()->create();
-        $product->images()->create([
-            'path' => 'appwrite:file-123',
-            'sort_order' => 0,
-            'is_primary' => true,
-        ]);
+        $product = $this->makeProduct();
+        $this->catalog->addImage((string) $product['id'], 'appwrite:file-123', 0, true);
 
-        $this->deleteJson('/api/products/'.$product->id)->assertStatus(204);
+        $this->deleteJson('/api/products/'.$product['id'])->assertStatus(204);
 
-        $this->assertDatabaseMissing('products', ['id' => $product->id]);
-        $this->assertDatabaseCount('product_images', 0);
+        $this->assertNull($this->catalog->find((string) $product['id']));
+        $this->assertSame([], $this->catalog->images((string) $product['id']));
         Http::assertSent(function (ClientRequest $request): bool {
             return $request->method() === 'DELETE'
                 && $request->url() === 'https://appwrite.example.test/v1/storage/buckets/product-images/files/file-123';
@@ -213,18 +202,18 @@ class ProductApiTest extends TestCase
     {
         $this->getJson('/api/products/does-not-exist')->assertNotFound();
 
-        Product::factory()->create(['name' => 'Hidden', 'slug' => 'hidden-product', 'is_active' => false]);
+        $this->makeProduct(['name' => 'Hidden', 'slug' => 'hidden-product', 'is_active' => false]);
 
         $this->getJson('/api/products/hidden-product')->assertNotFound();
     }
 
     public function test_show_returns_product_by_id(): void
     {
-        $product = Product::factory()->create(['name' => 'By Id', 'slug' => 'by-id']);
+        $product = $this->makeProduct(['name' => 'By Id', 'slug' => 'by-id']);
 
-        $this->getJson('/api/products/'.$product->id)
+        $this->getJson('/api/products/'.$product['id'])
             ->assertOk()
-            ->assertJsonPath('data.id', $product->id)
+            ->assertJsonPath('data.id', $product['id'])
             ->assertJsonPath('data.slug', 'by-id');
 
         $this->getJson('/api/products/999')->assertNotFound();
@@ -244,12 +233,12 @@ class ProductApiTest extends TestCase
             ->assertJsonPath('data.in_stock', true)
             ->assertJsonStructure(['data' => ['id', 'images']]);
 
-        $this->assertDatabaseHas('products', [
-            'slug' => 'nigeria-1994-home-shirt',
-            'price' => 4500,
-            'stock' => 10,
-            'category_id' => $category->id,
-        ]);
+        $product = $this->catalog->find('nigeria-1994-home-shirt');
+
+        $this->assertNotNull($product);
+        $this->assertSame(4500, $product['price']);
+        $this->assertSame(10, $product['stock']);
+        $this->assertSame($category->id, $product['category_id']);
     }
 
     public function test_store_persists_size(): void
@@ -260,10 +249,7 @@ class ProductApiTest extends TestCase
             ->assertStatus(201)
             ->assertJsonPath('data.size', 'S,M,L,XL');
 
-        $this->assertDatabaseHas('products', [
-            'slug' => 'nigeria-1994-home-shirt',
-            'size' => 'S,M,L,XL',
-        ]);
+        $this->assertSame('S,M,L,XL', $this->catalog->find('nigeria-1994-home-shirt')['size']);
     }
 
     public function test_store_requires_required_fields(): void
@@ -275,13 +261,13 @@ class ProductApiTest extends TestCase
 
     public function test_store_requires_unique_slug(): void
     {
-        Product::factory()->create(['slug' => 'nigeria-1994-home-shirt']);
+        $this->makeProduct(['slug' => 'nigeria-1994-home-shirt']);
 
         $this->postJson('/api/products', $this->validProductPayload())
             ->assertStatus(422)
             ->assertJsonPath('errors.slug.0', 'The slug has already been taken.');
 
-        $this->assertDatabaseMissing('products', ['name' => 'Nigeria 1994 Home Shirt']);
+        $this->assertCount(1, $this->catalog->products());
     }
 
     public function test_store_rejects_malformed_slug(): void
@@ -328,21 +314,17 @@ class ProductApiTest extends TestCase
 
         $response->assertStatus(201)->assertJsonCount(2, 'data.images');
 
-        $images = Product::query()
-            ->where('slug', 'nigeria-1994-home-shirt')
-            ->firstOrFail()
-            ->images()
-            ->orderBy('sort_order')
-            ->get();
+        $product = $this->catalog->find('nigeria-1994-home-shirt');
+        $images = $this->catalog->images((string) $product['id']);
 
         $this->assertCount(2, $images);
-        $this->assertSame(0, $images[0]->sort_order);
-        $this->assertSame(1, $images[1]->sort_order);
-        $this->assertTrue($images[0]->is_primary);
-        $this->assertFalse($images[1]->is_primary);
+        $this->assertSame(0, $images[0]['sort_order']);
+        $this->assertSame(1, $images[1]['sort_order']);
+        $this->assertTrue($images[0]['is_primary']);
+        $this->assertFalse($images[1]['is_primary']);
 
-        Storage::disk('public')->assertExists($images[0]->path);
-        Storage::disk('public')->assertExists($images[1]->path);
+        Storage::disk('public')->assertExists($images[0]['path']);
+        Storage::disk('public')->assertExists($images[1]['path']);
     }
 
     public function test_store_rejects_non_image_upload(): void
@@ -352,30 +334,30 @@ class ProductApiTest extends TestCase
         ]));
 
         $response->assertStatus(422)->assertJsonValidationErrors(['images.0']);
-        $this->assertDatabaseMissing('products', ['slug' => 'nigeria-1994-home-shirt']);
+        $this->assertSame([], $this->catalog->products());
     }
 
     public function test_update_changes_size(): void
     {
-        $product = Product::factory()->create(['size' => 'M']);
+        $product = $this->makeProduct(['size' => 'M']);
 
-        $this->patchJson('/api/products/'.$product->id, ['size' => 'L,XL'])
+        $this->patchJson('/api/products/'.$product['id'], ['size' => 'L,XL'])
             ->assertOk()
             ->assertJsonPath('data.size', 'L,XL');
 
-        $this->assertDatabaseHas('products', ['id' => $product->id, 'size' => 'L,XL']);
+        $this->assertSame('L,XL', $this->catalog->find($product['id'])['size']);
     }
 
     public function test_update_changes_fields_by_id(): void
     {
-        $product = Product::factory()->create([
+        $product = $this->makeProduct([
             'name' => 'Old Name',
             'slug' => 'old-name',
             'price' => 3000,
             'stock' => 1,
         ]);
 
-        $this->patchJson('/api/products/'.$product->id, [
+        $this->patchJson('/api/products/'.$product['id'], [
             'name' => 'New Name',
             'price' => 4500,
             'stock' => 12,
@@ -385,23 +367,25 @@ class ProductApiTest extends TestCase
             ->assertJsonPath('data.price', 4500)
             ->assertJsonPath('data.stock', 12);
 
-        $this->assertDatabaseHas('products', ['id' => $product->id, 'name' => 'New Name', 'price' => 4500]);
+        $updated = $this->catalog->find($product['id']);
+        $this->assertSame('New Name', $updated['name']);
+        $this->assertSame(4500, $updated['price']);
     }
 
     public function test_update_resolves_product_by_slug(): void
     {
-        $product = Product::factory()->create(['slug' => 'by-slug-update', 'name' => 'Before']);
+        $product = $this->makeProduct(['slug' => 'by-slug-update', 'name' => 'Before']);
 
         $this->patchJson('/api/products/by-slug-update', ['name' => 'After'])
             ->assertOk()
-            ->assertJsonPath('data.id', $product->id)
+            ->assertJsonPath('data.id', $product['id'])
             ->assertJsonPath('data.name', 'After');
     }
 
     public function test_update_validates_slug_uniqueness_ignoring_self(): void
     {
-        Product::factory()->create(['slug' => 'shirt-a']);
-        Product::factory()->create(['slug' => 'shirt-b']);
+        $this->makeProduct(['slug' => 'shirt-a']);
+        $this->makeProduct(['slug' => 'shirt-b']);
 
         $this->patchJson('/api/products/shirt-b', ['slug' => 'shirt-a'])
             ->assertStatus(422)
@@ -414,60 +398,52 @@ class ProductApiTest extends TestCase
 
     public function test_update_rejects_invalid_price(): void
     {
-        $product = Product::factory()->create(['price' => 3000]);
+        $product = $this->makeProduct(['price' => 3000]);
 
-        $this->patchJson('/api/products/'.$product->id, ['price' => -1])
+        $this->patchJson('/api/products/'.$product['id'], ['price' => -1])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['price']);
 
-        $this->assertDatabaseHas('products', ['id' => $product->id, 'price' => 3000]);
+        $this->assertSame(3000, $this->catalog->find($product['id'])['price']);
     }
 
     public function test_update_appends_uploaded_images(): void
     {
         Storage::fake('public');
 
-        $product = Product::factory()->create();
+        $product = $this->makeProduct();
         $existingPath = $this->imageUpload('existing.png')->store('products', 'public');
 
-        $product->images()->create([
-            'path' => $existingPath,
-            'sort_order' => 0,
-            'is_primary' => true,
-        ]);
+        $this->catalog->addImage((string) $product['id'], $existingPath, 0, true);
 
-        $this->post('/api/products/'.$product->id, [
+        $this->post('/api/products/'.$product['id'], [
             '_method' => 'PATCH',
             'images' => [$this->imageUpload('added.png')],
         ])
             ->assertStatus(200)
             ->assertJsonCount(2, 'data.images');
 
-        $images = $product->images()->orderBy('sort_order')->get();
+        $images = $this->catalog->images((string) $product['id']);
 
         $this->assertCount(2, $images);
-        $this->assertSame($existingPath, $images[0]->path);
-        $this->assertSame(1, $images[1]->sort_order);
-        $this->assertTrue($images[0]->is_primary);
-        $this->assertFalse($images[1]->is_primary);
+        $this->assertSame($existingPath, $images[0]['path']);
+        $this->assertSame(1, $images[1]['sort_order']);
+        $this->assertTrue($images[0]['is_primary']);
+        $this->assertFalse($images[1]['is_primary']);
 
         Storage::disk('public')->assertExists($existingPath);
-        Storage::disk('public')->assertExists($images[1]->path);
+        Storage::disk('public')->assertExists($images[1]['path']);
     }
 
     public function test_update_can_replace_the_existing_image_gallery(): void
     {
         Storage::fake('public');
 
-        $product = Product::factory()->create();
+        $product = $this->makeProduct();
         $existingPath = $this->imageUpload('old.png')->store('products', 'public');
-        $product->images()->create([
-            'path' => $existingPath,
-            'sort_order' => 0,
-            'is_primary' => true,
-        ]);
+        $this->catalog->addImage((string) $product['id'], $existingPath, 0, true);
 
-        $response = $this->post('/api/products/'.$product->id, [
+        $response = $this->post('/api/products/'.$product['id'], [
             '_method' => 'PATCH',
             'replace_images' => '1',
             'images' => [$this->imageUpload('replacement.png')],
@@ -478,20 +454,19 @@ class ProductApiTest extends TestCase
 
         $replacementPath = $response->json('data.images.0.path');
 
-        $this->assertDatabaseMissing('product_images', ['path' => $existingPath]);
-        $this->assertDatabaseHas('product_images', ['path' => $replacementPath, 'is_primary' => true]);
+        $this->assertSame([$replacementPath], array_column($this->catalog->images((string) $product['id']), 'path'));
         Storage::disk('public')->assertMissing($existingPath);
         Storage::disk('public')->assertExists($replacementPath);
     }
 
     public function test_replacing_images_requires_at_least_one_new_upload(): void
     {
-        $product = Product::factory()->create();
+        $product = $this->makeProduct();
 
-        $this->post('/api/products/'.$product->id, [
+        $this->post('/api/products/'.$product['id'], [
             '_method' => 'PATCH',
             'replace_images' => '1',
-            'name' => $product->name,
+            'name' => $product['name'],
         ])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['images']);
@@ -507,31 +482,27 @@ class ProductApiTest extends TestCase
     {
         Storage::fake('public');
 
-        $product = Product::factory()->create();
+        $product = $this->makeProduct();
         $path = $this->imageUpload()->store('products', 'public');
 
-        $product->images()->create([
-            'path' => $path,
-            'sort_order' => 0,
-            'is_primary' => true,
-        ]);
+        $this->catalog->addImage((string) $product['id'], $path, 0, true);
 
         Storage::disk('public')->assertExists($path);
 
-        $this->deleteJson('/api/products/'.$product->id)->assertStatus(204);
+        $this->deleteJson('/api/products/'.$product['id'])->assertStatus(204);
 
-        $this->assertDatabaseMissing('products', ['id' => $product->id]);
-        $this->assertDatabaseCount('product_images', 0);
+        $this->assertNull($this->catalog->find($product['id']));
+        $this->assertSame([], $this->catalog->images((string) $product['id']));
         Storage::disk('public')->assertMissing($path);
     }
 
     public function test_destroy_resolves_product_by_slug(): void
     {
-        $product = Product::factory()->create(['slug' => 'delete-me']);
+        $product = $this->makeProduct(['slug' => 'delete-me']);
 
         $this->deleteJson('/api/products/delete-me')->assertStatus(204);
 
-        $this->assertDatabaseMissing('products', ['id' => $product->id]);
+        $this->assertNull($this->catalog->find($product['id']));
     }
 
     public function test_destroy_returns_404_for_unknown_key(): void

@@ -45,22 +45,34 @@ class ProductResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id' => $this->id,
-            'name' => $this->name,
-            'slug' => $this->slug,
-            'team' => $this->team,
-            'year' => $this->year,
-            'description' => $this->description,
-            'price' => $this->price,
-            'old_price' => $this->old_price,
-            'discount_percent' => $this->discount_percent,
-            'stock' => $this->stock,
-            'size' => $this->size,
-            'in_stock' => $this->stock > 0,
-            'is_active' => $this->is_active,
-            'images' => ProductImageResource::collection($this->whenLoaded('images')),
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'id' => $this->resource['id'],
+            'name' => $this->resource['name'],
+            'slug' => $this->resource['slug'],
+            'team' => $this->resource['team'],
+            'year' => $this->resource['year'],
+            'description' => $this->resource['description'],
+            'price' => $this->resource['price'],
+            'old_price' => $this->resource['old_price'],
+            'discount_percent' => $this->discountPercent(),
+            'stock' => $this->resource['stock'],
+            'size' => $this->resource['size'],
+            'in_stock' => $this->resource['stock'] > 0,
+            'is_active' => $this->resource['is_active'],
+            'images' => ProductImageResource::collection($this->resource['images'] ?? []),
+            'created_at' => $this->resource['created_at'],
+            'updated_at' => $this->resource['updated_at'],
         ];
+    }
+
+    private function discountPercent(): int
+    {
+        $price = (int) $this->resource['price'];
+        $oldPrice = $this->resource['old_price'];
+
+        if (! $oldPrice || $oldPrice <= $price) {
+            return 0;
+        }
+
+        return (int) round((($oldPrice - $price) / $oldPrice) * 100);
     }
 }

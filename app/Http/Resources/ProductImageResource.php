@@ -2,9 +2,9 @@
 
 namespace App\Http\Resources;
 
+use App\Support\ProductImageStorage;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use App\Support\ProductImageStorage;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(
@@ -26,11 +26,11 @@ class ProductImageResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id' => $this->id,
-            'path' => $this->path,
-            'url' => ProductImageStorage::url((string) $this->path, $request),
-            'sort_order' => $this->sort_order,
-            'is_primary' => $this->is_primary,
+            'id' => $this->resource['id'],
+            'path' => $this->resource['path'],
+            'url' => ProductImageStorage::url((string) $this->resource['path'], $request),
+            'sort_order' => $this->resource['sort_order'],
+            'is_primary' => $this->resource['is_primary'],
         ];
     }
 }
