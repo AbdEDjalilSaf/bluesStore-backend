@@ -16,11 +16,6 @@ use Throwable;
 
 class ProductController extends Controller
 {
-    private function imageDisk(): string
-    {
-        return (string) config('filesystems.product_images_disk', env('PRODUCT_IMAGES_DISK', 'r2'));
-    }
-
     /**
      * List all active shirts without pagination or filters.
      */

@@ -40,11 +40,13 @@ services:
       - key: PRODUCT_IMAGES_DRIVER
         value: appwrite
       - key: APPWRITE_ENDPOINT
-        value: https://cloud.appwrite.io/v1
+        value: https://fra.cloud.appwrite.io/v1
       - key: APPWRITE_PROJECT_ID
         value: 6ae1bfab0039e1097bef
+      - key: APPWRITE_DATABASE_ID
+        value: 6ae1bff6001d91846146
       - key: APPWRITE_API_KEY
         sync: false # Set in the Render Dashboard
       - key: APPWRITE_PRODUCT_IMAGES_BUCKET_ID
-        sync: false # Set in the Render Dashboard
+        value: 6ae1cfeb0014302bc8a1
     # Free web services have ephemeral filesystems. Product images are stored in Appwrite.

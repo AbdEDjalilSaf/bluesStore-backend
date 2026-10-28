@@ -120,31 +120,6 @@ class ProductApiTest extends TestCase
             ->assertJsonPath('data.0.images.0.url', 'http://localhost/storage/products/front.png');
     }
 
-    public function test_index_builds_secure_cloudinary_urls_for_cloudinary_image_paths(): void
-    {
-        config([
-            'filesystems.product_images_driver' => 'cloudinary',
-            'services.cloudinary.url' => 'cloudinary://test_key:test_secret@demo-cloud',
-        ]);
-
-        $product = Product::factory()->create();
-        $product->images()->create([
-            'path' => 'cloudinary:bluesstore/products/front',
-            'sort_order' => 0,
-            'is_primary' => true,
-        ]);
-
-        $url = $this->getJson('/api/products')
-            ->assertOk()
-            ->json('data.0.images.0.url');
-
-        $this->assertStringContainsString(
-            'https://res.cloudinary.com/demo-cloud/image/upload',
-            $url,
-        );
-        $this->assertStringContainsString('bluesstore/products/front', $url);
-    }
-
     public function test_index_builds_appwrite_file_view_urls(): void
     {
         $this->configureAppwrite();
