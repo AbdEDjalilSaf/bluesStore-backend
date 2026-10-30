@@ -1,0 +1,9 @@
+Errors parsing app/Http/Requests/StoreProductRequest.php
+php : PHP Parse error:  syntax error, unexpected variable "$this", expecting "function" in 
+app/Http/Requests/StoreProductRequest.php on line 137
+At line:1 char:1
++ php -l app/Http/Requests/StoreProductRequest.php 2>&1 | Out-File -Enc ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (PHP Parse error...php on line 137:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

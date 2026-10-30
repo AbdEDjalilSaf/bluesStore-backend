@@ -61,17 +61,24 @@ class UpdateProductRequest extends FormRequest
             $decoded = json_decode($images, true);
 
             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                $this->merge(['images' => $decoded]);
+                if (empty($decoded)) {
+                    $this->offsetUnset('images');
+                } else {
+                    $this->merge(['images' => $decoded]);
+                }
             } elseif (str_contains($images, ',')) {
-                $this->merge([
-                    'images' => array_values(array_filter(array_map('trim', explode(',', $images)), fn ($value) => $value !== '')),
-                ]);
+                $split = array_values(array_filter(array_map('trim', explode(',', $images)), fn ($value) => $value !== ''));
+                if (empty($split)) {
+                    $this->offsetUnset('images');
+                } else {
+                    $this->merge(['images' => $split]);
+                }
             } else {
                 $trimmed = trim($images);
                 if ($trimmed !== '') {
                     $this->merge(['images' => [$trimmed]]);
                 } else {
-                    $this->merge(['images' => []]);
+                    $this->offsetUnset('images');
                 }
             }
 
@@ -117,18 +124,22 @@ class UpdateProductRequest extends FormRequest
                 }
             }
 
-            $this->merge(['images' => $normalized]);
+            if (empty($normalized)) {
+                $this->offsetUnset('images');
+            } else {
+                $this->merge(['images' => $normalized]);
+            }
 
             return;
         }
 
         if (is_null($images)) {
-            $this->merge(['images' => []]);
+            $this->offsetUnset('images');
 
             return;
         }
 
-        $this->merge(['images' => []]);
+        $this->offsetUnset('images');
     }
 
     /**

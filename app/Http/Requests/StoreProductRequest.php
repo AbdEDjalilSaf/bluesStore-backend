@@ -116,18 +116,22 @@ class StoreProductRequest extends FormRequest
                 }
             }
 
-            $this->merge(['images' => $normalized]);
+            if (empty($normalized)) {
+                $this->offsetUnset('images');
+            } else {
+                $this->merge(['images' => $normalized]);
+            }
 
             return;
         }
 
         if (is_null($images)) {
-            $this->merge(['images' => []]);
+            $this->offsetUnset('images');
 
             return;
         }
 
-        $this->merge(['images' => []]);
+        $this->offsetUnset('images');
     }
 
     /**
@@ -149,7 +153,23 @@ class StoreProductRequest extends FormRequest
             $hasFileImages = true;
         }
 
-        $imagesRules = ['sometimes', 'array', 'max:8'];
+        if (! $this->has('images')) {
+            return [
+                'name' => ['required', 'string', 'max:255'],
+                'slug' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', new UniqueProductSlug],
+                'team' => ['required', 'string', 'max:255'],
+                'year' => ['required', 'integer', 'min:1900', 'max:2100'],
+                'description' => ['required', 'string'],
+                'price' => ['required', 'integer', 'min:0'],
+                'old_price' => ['nullable', 'integer', 'min:0'],
+                'stock' => ['required', 'integer', 'min:0'],
+                'size' => ['nullable', 'string', 'max:255'],
+                'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')],
+                'is_active' => ['sometimes', 'boolean'],
+            ];
+        }
+
+        $imagesRules = ['array', 'max:8'];
 
         if ($hasFileImages) {
             $imagesRules[] = function ($attribute, $value, $fail) {
@@ -173,9 +193,7 @@ class StoreProductRequest extends FormRequest
 
         $imageItemRules = $hasFileImages
             ? ['image', 'mimes:jpeg,jpg,png,webp', 'max:2048']
-            : ['required', 'string'];
-
-        $imageItemRules[] = $hasFileImages ? 'nullable' : ['url'];
+            : ['required', 'string', 'url'];
 
         return [
             'name' => ['required', 'string', 'max:255'],
