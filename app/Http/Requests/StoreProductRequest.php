@@ -50,6 +50,12 @@ class StoreProductRequest extends FormRequest
 
         $images = $this->input('images');
 
+        if ($images instanceof UploadedFile) {
+            $this->merge(['images' => [$images]]);
+
+            return;
+        }
+
         if (is_string($images)) {
             $decoded = json_decode($images, true);
 
@@ -111,7 +117,17 @@ class StoreProductRequest extends FormRequest
             }
 
             $this->merge(['images' => $normalized]);
+
+            return;
         }
+
+        if (is_null($images)) {
+            $this->merge(['images' => []]);
+
+            return;
+        }
+
+        $this->merge(['images' => []]);
     }
 
     /**
