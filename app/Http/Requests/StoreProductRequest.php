@@ -28,10 +28,7 @@ use OpenApi\Attributes as OA;
             property: 'images',
             type: 'array',
             description: 'Image uploads or image URLs. Requires a multipart/form-data request for uploads.',
-            items: new OA\Items(oneOf: [
-                new OA\Schema(type: 'string', format: 'binary'),
-                new OA\Schema(type: 'string', format: 'uri'),
-            ])
+            items: new OA\Items(type: 'string', format: 'binary')
         ),
     ]
 )]
@@ -44,94 +41,38 @@ class StoreProductRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if (! $this->has('images')) {
-            return;
-        }
-
-        $images = $this->input('images');
-
-        if ($images instanceof UploadedFile) {
-            $this->merge(['images' => [$images]]);
-
-            return;
-        }
-
-        if (is_string($images)) {
-            $decoded = json_decode($images, true);
-
-            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                $this->merge(['images' => $decoded]);
-            } elseif (str_contains($images, ',')) {
-                $this->merge([
-                    'images' => array_values(array_filter(array_map('trim', explode(',', $images)), fn ($value) => $value !== '')),
-                ]);
-            } else {
-                $trimmed = trim($images);
-                if ($trimmed !== '') {
-                    $this->merge(['images' => [$trimmed]]);
-                } else {
-                    $this->merge(['images' => []]);
-                }
-            }
-
-            return;
-        }
-
-        if (is_array($images)) {
-            $normalized = [];
-
-            foreach ($images as $image) {
-                if ($image instanceof UploadedFile) {
-                    $normalized[] = $image;
-
-                    continue;
-                }
-
-                if (is_string($image)) {
-                    $trimmed = trim($image);
-
-                    if ($trimmed === '') {
-                        continue;
-                    }
-
-                    $decoded = json_decode($trimmed, true);
-                    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                        foreach ($decoded as $nested) {
-                            if ($nested instanceof UploadedFile) {
-                                $normalized[] = $nested;
-                                continue;
-                            }
-                            if (is_string($nested)) {
-                                $nestedTrimmed = trim($nested);
-                                if ($nestedTrimmed !== '') {
-                                    $normalized[] = $nestedTrimmed;
-                                }
-                            }
-                        }
-                        continue;
-                    }
-
-                    $normalized[] = $trimmed;
-                    continue;
-                }
-            }
-
-            if (empty($normalized)) {
-                $this->offsetUnset('images');
-            } else {
-                $this->merge(['images' => $normalized]);
-            }
-
-            return;
-        }
-
-        if (is_null($images)) {
-            $this->offsetUnset('images');
-
-            return;
-        }
-
         $this->offsetUnset('images');
+
+        $images = $this->collectImagesFromFiles();
+
+        if ($images !== null && ! empty($images)) {
+            $this->merge(['images' => array_values($images)]);
+        }
+    }
+
+    /**
+     * @return array<int, UploadedFile>|null
+     */
+    private function collectImagesFromFiles(): ?array
+    {
+        $allFiles = $this->allFiles();
+        $images = [];
+
+        foreach ($allFiles as $key => $file) {
+            if (str_starts_with($key, 'images')) {
+                if ($file instanceof UploadedFile) {
+                    $images[] = $file;
+                } elseif (is_array($file)) {
+                    foreach ($file as $nestedFile) {
+                        if ($nestedFile instanceof UploadedFile) {
+                            $images[] = $nestedFile;
+                        }
+                    }
+                }
+            }
+        }
+
+        return empty($images) ? null : $images;
     }
 
     /**
@@ -153,23 +94,25 @@ class StoreProductRequest extends FormRequest
             $hasFileImages = true;
         }
 
-        if (! $this->has('images')) {
-            return [
-                'name' => ['required', 'string', 'max:255'],
-                'slug' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', new UniqueProductSlug],
-                'team' => ['required', 'string', 'max:255'],
-                'year' => ['required', 'integer', 'min:1900', 'max:2100'],
-                'description' => ['required', 'string'],
-                'price' => ['required', 'integer', 'min:0'],
-                'old_price' => ['nullable', 'integer', 'min:0'],
-                'stock' => ['required', 'integer', 'min:0'],
-                'size' => ['nullable', 'string', 'max:255'],
-                'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')],
-                'is_active' => ['sometimes', 'boolean'],
-            ];
+        $baseRules = [
+            'name' => ['required', 'string', 'max:255'],
+            'slug' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', new UniqueProductSlug],
+            'team' => ['required', 'string', 'max:255'],
+            'year' => ['required', 'integer', 'min:1900', 'max:2100'],
+            'description' => ['required', 'string'],
+            'price' => ['required', 'integer', 'min:0'],
+            'old_price' => ['nullable', 'integer', 'min:0'],
+            'stock' => ['required', 'integer', 'min:0'],
+            'size' => ['nullable', 'string', 'max:255'],
+            'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')],
+            'is_active' => ['sometimes', 'boolean'],
+        ];
+
+        if (! $this->has('images') || ! is_array($images)) {
+            return $baseRules;
         }
 
-        $imagesRules = ['array', 'max:8'];
+        $imagesRules = ['sometimes', 'array', 'max:8'];
 
         if ($hasFileImages) {
             $imagesRules[] = function ($attribute, $value, $fail) {
@@ -187,7 +130,7 @@ class StoreProductRequest extends FormRequest
                     }
                 }
             };
-        } else {
+        } elseif (! empty($images)) {
             $imagesRules[] = 'min:1';
         }
 
@@ -195,21 +138,10 @@ class StoreProductRequest extends FormRequest
             ? ['image', 'mimes:jpeg,jpg,png,webp', 'max:2048']
             : ['required', 'string', 'url'];
 
-        return [
-            'name' => ['required', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:255', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/', new UniqueProductSlug],
-            'team' => ['required', 'string', 'max:255'],
-            'year' => ['required', 'integer', 'min:1900', 'max:2100'],
-            'description' => ['required', 'string'],
-            'price' => ['required', 'integer', 'min:0'],
-            'old_price' => ['nullable', 'integer', 'min:0'],
-            'stock' => ['required', 'integer', 'min:0'],
-            'size' => ['nullable', 'string', 'max:255'],
-            'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')],
-            'is_active' => ['sometimes', 'boolean'],
+        return array_merge($baseRules, [
             'images' => $imagesRules,
             'images.*' => $imageItemRules,
-        ];
+        ]);
     }
 
     /**

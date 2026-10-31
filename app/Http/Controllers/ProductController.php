@@ -50,7 +50,27 @@ class ProductController extends Controller
                 new OA\JsonContent(ref: '#/components/schemas/ProductRequest'),
                 new OA\MediaType(
                     mediaType: 'multipart/form-data',
-                    schema: new OA\Schema(ref: '#/components/schemas/ProductRequest')
+                    schema: new OA\Schema(
+                        required: ['name', 'slug', 'team', 'year', 'description', 'price', 'stock'],
+                        properties: [
+                            new OA\Property(property: 'name', type: 'string'),
+                            new OA\Property(property: 'slug', type: 'string'),
+                            new OA\Property(property: 'team', type: 'string'),
+                            new OA\Property(property: 'year', type: 'integer'),
+                            new OA\Property(property: 'description', type: 'string'),
+                            new OA\Property(property: 'price', type: 'integer'),
+                            new OA\Property(property: 'old_price', type: 'integer'),
+                            new OA\Property(property: 'stock', type: 'integer'),
+                            new OA\Property(property: 'size', type: 'string'),
+                            new OA\Property(property: 'category_id', type: 'integer'),
+                            new OA\Property(property: 'is_active', type: 'boolean'),
+                            new OA\Property(
+                                property: 'images',
+                                type: 'array',
+                                items: new OA\Items(type: 'string', format: 'binary')
+                            ),
+                        ]
+                    )
                 ),
             ]
         ),

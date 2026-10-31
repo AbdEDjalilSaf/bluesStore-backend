@@ -45,11 +45,25 @@ class UpdateProductRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if (! $this->has('images')) {
+        $images = $this->file('images');
+
+        if ($images === null) {
+            $images = $this->input('images');
+        }
+
+        if ($images === null) {
+            $images = $this->collectImagesFromFiles();
+        }
+
+        if ($images === null) {
             return;
         }
 
-        $images = $this->input('images');
+        if (is_array($images)) {
+            $this->merge(['images' => array_values($images)]);
+
+            return;
+        }
 
         if ($images instanceof UploadedFile) {
             $this->merge(['images' => [$images]]);
@@ -107,6 +121,7 @@ class UpdateProductRequest extends FormRequest
                         foreach ($decoded as $nested) {
                             if ($nested instanceof UploadedFile) {
                                 $normalized[] = $nested;
+
                                 continue;
                             }
                             if (is_string($nested)) {
@@ -116,10 +131,12 @@ class UpdateProductRequest extends FormRequest
                                 }
                             }
                         }
+
                         continue;
                     }
 
                     $normalized[] = $trimmed;
+
                     continue;
                 }
             }
@@ -140,6 +157,31 @@ class UpdateProductRequest extends FormRequest
         }
 
         $this->offsetUnset('images');
+    }
+
+    /**
+     * @return array<int, UploadedFile>|null
+     */
+    private function collectImagesFromFiles(): ?array
+    {
+        $allFiles = $this->allFiles();
+        $images = [];
+
+        foreach ($allFiles as $key => $file) {
+            if (str_starts_with($key, 'images')) {
+                if ($file instanceof UploadedFile) {
+                    $images[] = $file;
+                } elseif (is_array($file)) {
+                    foreach ($file as $nestedFile) {
+                        if ($nestedFile instanceof UploadedFile) {
+                            $images[] = $nestedFile;
+                        }
+                    }
+                }
+            }
+        }
+
+        return empty($images) ? null : $images;
     }
 
     /**
@@ -177,7 +219,7 @@ class UpdateProductRequest extends FormRequest
         $imagesRules[] = 'array';
         $imagesRules[] = 'max:8';
 
-        if ($replaceImages && ! $hasFileImages) {
+        if ($replaceImages && ! $hasFileImages && ! empty($images)) {
             $imagesRules[] = 'min:1';
         }
 
