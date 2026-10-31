@@ -257,8 +257,12 @@ class ProductController extends Controller
 
         $paths = array_column($product['images'], 'path');
 
-        $this->catalog->delete((string) $product['id']);
+        // Keep the image paths before removing their rows. Delete the dependent
+        // Appwrite TablesDB rows first, then the product row, and finally the
+        // Appwrite Storage files. This avoids orphaned image rows/files and also
+        // works when the Appwrite table schema enforces relationships.
         $this->catalog->deleteImagesForProduct((string) $product['id']);
+        $this->catalog->delete((string) $product['id']);
 
         ProductImageStorage::delete($paths);
 
