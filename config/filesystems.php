@@ -15,8 +15,8 @@ return [
 
     'default' => env('FILESYSTEM_DISK', 'local'),
 
-    // Product images use local storage by default; set to "appwrite" on Render Free.
-    'product_images_driver' => env('PRODUCT_IMAGES_DRIVER', 'local'),
+    // Product images must use durable object storage in production.
+    'product_images_driver' => env('PRODUCT_IMAGES_DRIVER', 'appwrite'),
 
     /*
     |--------------------------------------------------------------------------

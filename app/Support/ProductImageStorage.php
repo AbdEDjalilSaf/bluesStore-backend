@@ -26,8 +26,25 @@ class ProductImageStorage
 
     public static function url(string $path, Request $request): string
     {
+        $path = trim($path);
+
+        if ($path === '') {
+            return '';
+        }
+
+        if (preg_match('#^(?:https?:)?//#i', $path) === 1) {
+            return $path;
+        }
+
         if (str_starts_with($path, self::APPWRITE_PREFIX)) {
             return self::appwriteUrl(substr($path, strlen(self::APPWRITE_PREFIX)));
+        }
+
+        // Do not expose stale Render/local-disk URLs after switching to Appwrite.
+        // Legacy rows stay URL-less until they are migrated, allowing the frontend
+        // to show its deterministic product fallback instead of a 404 image.
+        if ((string) config('filesystems.product_images_driver', 'appwrite') === 'appwrite') {
+            return '';
         }
 
         if (config('filesystems.disks.public.driver') === 'local') {
